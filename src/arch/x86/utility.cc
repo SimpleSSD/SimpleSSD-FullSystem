@@ -40,6 +40,8 @@
 
 #include "arch/x86/utility.hh"
 
+#include <fstream>
+
 #include "arch/x86/interrupts.hh"
 #include "arch/x86/registers.hh"
 #include "arch/x86/x86_traits.hh"
@@ -365,6 +367,91 @@ storeFloat80(void *_mem, double value)
 {
     fp80_t fp80 = fp80_cvfd(value);
     memcpy(_mem, fp80.bits, 10);
+}
+
+void
+installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
+               SegDescriptor desc, bool longmode)
+{
+    uint64_t base = desc.baseLow + (desc.baseHigh << 24);
+    bool honorBase = !longmode || seg == SEGMENT_REG_FS ||
+                                  seg == SEGMENT_REG_GS ||
+                                  seg == SEGMENT_REG_TSL ||
+                                  seg == SYS_SEGMENT_REG_TR;
+    uint64_t limit = desc.limitLow | (desc.limitHigh << 16);
+    if (desc.g)
+        limit = limit * PageBytes + PageBytes - 1;
+
+    SegAttr attr = 0;
+
+    attr.dpl = desc.dpl;
+    attr.unusable = 0;
+    attr.defaultSize = desc.d;
+    attr.longMode = desc.l;
+    attr.avl = desc.avl;
+    attr.granularity = desc.g;
+    attr.present = desc.p;
+    attr.system = desc.s;
+    attr.type = desc.type;
+    if (desc.s) {
+        if (desc.type.codeOrData) {
+            // Code segment
+            attr.expandDown = 0;
+            attr.readable = desc.type.r;
+            attr.writable = 0;
+        } else {
+            // Data segment
+            attr.expandDown = desc.type.e;
+            attr.readable = 1;
+            attr.writable = desc.type.w;
+        }
+    } else {
+        attr.readable = 1;
+        attr.writable = 1;
+        attr.expandDown = 0;
+    }
+
+    tc->setMiscReg(MISCREG_SEG_BASE(seg), base);
+    tc->setMiscReg(MISCREG_SEG_EFF_BASE(seg), honorBase ? base : 0);
+    tc->setMiscReg(MISCREG_SEG_LIMIT(seg), limit);
+    tc->setMiscReg(MISCREG_SEG_ATTR(seg), (MiscReg)attr);
+}
+
+int
+isIntelCPU()
+{
+    static int checked=0;
+    static int isIntel=0;
+
+    if (checked){
+        return(isIntel);
+    }
+    else{
+        checked = 1;
+        std::string vendor("vendor_id");
+        std::string check("GenuineIntel");
+        std::ifstream inFile("/proc/cpuinfo");
+        for ( std::string line; getline( inFile, line); ){
+            std::stringstream stream(line);
+            std::string oneWord;
+            int count=0;
+            while (stream >> oneWord){ count++;}
+            if (count == 3){
+                std::stringstream stream(line);
+                std::string type_string, value_string;
+                stream >> type_string;
+                stream >> oneWord;
+                stream >> value_string;
+                if (!type_string.compare(vendor)){
+                    inFile.close();
+                    isIntel = !value_string.compare(check);
+                    std::cout << "running on " << value_string << "\n";
+                    return isIntel;
+                }
+            }
+        }
+    }
+    return isIntel;
 }
 
 } // namespace X86_ISA

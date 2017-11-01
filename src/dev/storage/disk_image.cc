@@ -455,31 +455,3 @@ CowDiskImageParams::create()
 {
     return new CowDiskImage(this);
 }
-
-NullDiskImage::NullDiskImage(const Params *p)
-    : DiskImage(p), disk_size(p->disk_size) {}
-
-NullDiskImage::~NullDiskImage() {}
-
-std::streampos
-NullDiskImage::size() const {
-    return disk_size / SectorSize;
-}
-
-std::streampos
-NullDiskImage::read(uint8_t *data, std::streampos offset) const {
-    memset(data, 0, SectorSize);
-
-    return SectorSize;
-}
-
-std::streampos
-NullDiskImage::write(const uint8_t *data, std::streampos offset) {
-    return SectorSize;
-}
-
-NullDiskImage *
-NullDiskImageParams::create()
-{
-    return new NullDiskImage(this);
-}

@@ -160,6 +160,11 @@ class PerfKvmCounterConfig
         return *this;
     }
 
+    PerfKvmCounterConfig &exclude_kernel(bool val) {
+        attr.exclude_kernel = val;
+        return *this;
+    }
+
     /** Underlying perf_event_attr structure describing the counter */
     struct perf_event_attr attr;
 };

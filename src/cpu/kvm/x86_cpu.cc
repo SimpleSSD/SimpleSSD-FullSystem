@@ -505,8 +505,8 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
         if (!seg.present)
             warn("%s: P flag not set\n", name);
 
-        if (((seg.limit & 0xFFF) == 0 && seg.g) ||
-            ((seg.limit & 0xFFF00000) != 0 && !seg.g)) {
+        if ((bits(seg.limit, 11, 0) != mask(12) && seg.g) ||
+            (bits(seg.limit, 31, 20) && !seg.g)) {
             warn("%s limit (0x%x) and g (%i) combination is illegal.\n",
                  name, seg.limit, seg.g);
         }
@@ -719,12 +719,7 @@ setKvmSegmentReg(ThreadContext *tc, struct kvm_segment &kvm_seg,
     kvm_seg.l = attr.longMode;
     kvm_seg.g = attr.granularity;
     kvm_seg.avl = attr.avl;
-
-    // A segment is normally unusable when the selector is zero. There
-    // is a attr.unusable flag in gem5, but it seems unused. qemu
-    // seems to set this to 0 all the time, so we just do the same and
-    // hope for the best.
-    kvm_seg.unusable = 0;
+    kvm_seg.unusable = attr.unusable;
 }
 
 static inline void

@@ -899,41 +899,14 @@ namespace X86ISA
 
     /**
      * TSS Descriptor (long mode - 128 bits)
-     * the lower 64 bits
      */
-    BitUnion64(TSSlow)
-        Bitfield<63, 56> baseHigh;
-        Bitfield<39, 16> baseLow;
-        Bitfield<55> g; // Granularity
-        Bitfield<52> avl; // Available To Software
-        Bitfield<51, 48> limitHigh;
-        Bitfield<15, 0> limitLow;
-        Bitfield<47> p; // Present
-        Bitfield<46, 45> dpl; // Descriptor Privilege-Level
-        SubBitUnion(type, 43, 40)
-            // Specifies whether this descriptor is for code or data.
-            Bitfield<43> codeOrData;
-
-            // These bit fields are for code segments
-            Bitfield<42> c; // Conforming
-            Bitfield<41> r; // Readable
-
-            // These bit fields are for data segments
-            Bitfield<42> e; // Expand-Down
-            Bitfield<41> w; // Writable
-
-            // This is used for both code and data segments.
-            Bitfield<40> a; // Accessed
-        EndSubBitUnion(type)
-    EndBitUnion(TSSlow)
-
-    /**
-     * TSS Descriptor (long mode - 128 bits)
-     * the upper 64 bits
-     */
-    BitUnion64(TSShigh)
-        Bitfield<31, 0> base;
-    EndBitUnion(TSShigh)
+    struct Tss64Desc {
+        SegDescriptor low;
+        BitUnion64(TSSHigh)
+            Bitfield<32, 0> base;
+        EndBitUnion(TSSHigh)
+        TSSHigh high;
+    };
 
     BitUnion64(SegAttr)
         Bitfield<1, 0> dpl;

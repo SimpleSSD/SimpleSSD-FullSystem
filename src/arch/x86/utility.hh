@@ -196,6 +196,84 @@ namespace X86ISA
      * @param value Double precision float to store.
      */
     void storeFloat80(void *mem, double value);
+
+    /**
+     * Build a standard 64 bit code segment descriptor.
+     */
+    static inline SegDescriptor
+    codeSegDesc64() {
+        SegDescriptor desc = 0;
+        desc.type.codeOrData = 1;
+        desc.type.c = 0; // Not conforming
+        desc.type.r = 1; // Readable
+        desc.dpl = 0; // Privelege level 0
+        desc.p = 1; // Present
+        desc.l = 1; // 64 bit
+        desc.d = 0; // default operand size
+        desc.g = 1; // Page granularity
+        desc.s = 1; // Not a system segment
+        desc.limitHigh = 0xF;
+        desc.limitLow = 0xFFFF;
+        return desc;
+    }
+
+    /**
+     * Build a standard 32/64 bit data segment descriptor.
+     */
+    static inline SegDescriptor
+    dataSegDesc() {
+        SegDescriptor desc = 0;
+        desc.type.codeOrData = 0;
+        desc.type.e = 0; // Not expand down
+        desc.type.w = 1; // Writable
+        desc.dpl = 0; // Privelege level 0
+        desc.p = 1; // Present
+        desc.d = 1; // Default operand size
+        desc.g = 1; // Page granularity
+        desc.s = 1; // Not a system segment
+        desc.limitHigh = 0xF;
+        desc.limitLow = 0xFFFF;
+        return desc;
+    }
+
+    /**
+     * Build a 64 bit tss segment descriptor.
+     *
+     * @param desc The descriptor structure to fill in.
+     * @param base The base address of the TSS.
+     * @param limit The limit of the TSS.
+     */
+    static inline void
+    tssSegDesc64(Tss64Desc &desc, Addr base, Addr limit) {
+        desc.low = 0;
+        desc.high = 0;
+
+        desc.low.type = 0xB;
+        desc.low.dpl = 0; // Privelege level 0
+        desc.low.p = 1; // Present
+        desc.low.d = 1; // Default operand size
+        desc.low.s = 0;
+
+        if (limit > mask(20)) {
+            if ((limit & mask(12)) != mask(12)) {
+                panic("Limit %#x doesn't fit in a segment descriptor.\n",
+                      limit);
+            }
+            limit = limit >> 12;
+            desc.low.g = 1;
+        }
+        desc.low.limitHigh = bits(limit, 19, 16);
+        desc.low.limitLow = bits(limit, 15, 0);
+
+        desc.low.baseHigh = bits(base, 31, 24);
+        desc.low.baseLow = bits(base, 23, 0);
+        desc.high.base = bits(base, 63, 32);
+    }
+
+    void installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
+                        SegDescriptor desc, bool longmode);
+
+    int isIntelCPU();
 }
 
 #endif // __ARCH_X86_UTILITY_HH__

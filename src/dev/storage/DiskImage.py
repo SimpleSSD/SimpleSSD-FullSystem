@@ -46,9 +46,3 @@ class CowDiskImage(DiskImage):
                             "child image")
     table_size = Param.Int(65536, "initial table size")
     image_file = ""
-
-class NullDiskImage(DiskImage):
-    type = 'NullDiskImage'
-    cxx_header = "dev/storage/disk_image.hh"
-    disk_size = Param.UInt64(0x0000000000000000, "Disk size in bytes")
-    image_file = ""

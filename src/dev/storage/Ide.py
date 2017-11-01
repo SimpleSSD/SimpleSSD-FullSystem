@@ -38,8 +38,6 @@ class IdeDisk(SimObject):
     delay = Param.Latency('1us', "Fixed disk delay in microseconds")
     driveID = Param.IdeID('master', "Drive ID")
     image = Param.DiskImage("Disk image")
-    ssd_enable = Param.Bool(False, "Enable SSD on this disk")
-    ssd_config = Param.String('./ide.cfg', "IDE SSD Configuration File")
 
 class IdeController(PciDevice):
     type = 'IdeController'

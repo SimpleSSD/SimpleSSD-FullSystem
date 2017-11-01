@@ -92,11 +92,11 @@ def build_test_system(np, SSDConfig):
     elif buildEnv['TARGET_ISA'] == "sparc":
         test_sys = makeSparcSystem(test_mem_mode, bm[0], cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == "x86":
-        test_sys = makeLinuxX86System(test_mem_mode, options.num_cpus, bm[0],
-                SSDConfig, options.ruby, cmdline=cmdline)
+        test_sys = makeLinuxX86System(test_mem_mode, SSDConfig,
+                options.num_cpus, bm[0], options.ruby, cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == "arm":
-        test_sys = makeArmSystem(test_mem_mode, options.machine_type,
-                                 options.num_cpus, bm[0], SSDConfig,
+        test_sys = makeArmSystem(test_mem_mode, SSDConfig,
+                                 options.machine_type, options.num_cpus, bm[0],
                                  options.dtb_filename,
                                  bare_metal=options.bare_metal,
                                  cmdline=cmdline,
@@ -234,6 +234,13 @@ def build_test_system(np, SSDConfig):
 
         MemConfig.config_mem(options, test_sys)
 
+    if is_kvm_cpu(TestCPUClass) or is_kvm_cpu(FutureClass):
+        test_sys.eventq_index = 0
+        for idx, cpu in enumerate(test_sys.cpu):
+            for obj in cpu.descendants():
+                obj.eventq_index = test_sys.eventq_index
+            cpu.eventq_index = idx + 1
+
     return test_sys
 
 def build_drive_system(np):
@@ -369,5 +376,6 @@ if options.timesync:
 if options.frame_capture:
     VncServer.frame_capture = True
 
+root.sim_quantum = 1000000000
 Simulation.setWorkCountOptions(test_sys, options)
 Simulation.run(options, root, test_sys, FutureClass)

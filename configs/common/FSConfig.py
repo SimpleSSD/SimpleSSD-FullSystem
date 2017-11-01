@@ -43,7 +43,6 @@ from m5.objects import *
 from Benchmarks import *
 from m5.util import *
 from common import PlatformConfig
-import SSDConfigParser
 
 # Populate to reflect supported os types per target ISA
 os_types = { 'alpha' : [ 'linux' ],
@@ -65,27 +64,9 @@ class CowIdeDisk(IdeDisk):
     def childImage(self, ci):
         self.image.child.image_file = ci
 
-class NullIdeDisk(IdeDisk):
-    def setSize(self, size):
-        self.image = NullDiskImage(disk_size = size)
-
 class MemBus(SystemXBar):
     badaddr_responder = BadAddr()
     default = Self.badaddr_responder.pio
-
-def getSSDSize(SSDConfig):
-    cfgparser = SSDConfigParser.SSDConfigParser()
-
-    cfgparser.read(SSDConfig)
-
-    return cfgparser.getint('ssd', 'NumChannel') * \
-           cfgparser.getint('ssd', 'NumPackage') * \
-           cfgparser.getint('ssd', 'NumDie') * \
-           cfgparser.getint('ssd', 'NumPlane') * \
-           cfgparser.getint('ssd', 'NumBlock') * \
-           cfgparser.getint('ssd', 'NumPage') * \
-           cfgparser.getint('ssd', 'SizePage') * \
-           (1.0 - cfgparser.getfloat('ftl', 'FTLOP'))
 
 def fillInCmdline(mdesc, template, **kwargs):
     kwargs.setdefault('disk', mdesc.disk())
@@ -221,10 +202,9 @@ def makeSparcSystem(mem_mode, mdesc=None, cmdline=None):
 
     return self
 
-def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
-                  SSDConfig=None, dtb_filename=None, bare_metal=False,
-                  cmdline=None, external_memory="",
-                  ruby=False, security=False):
+def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
+                  dtb_filename=None, bare_metal=False, cmdline=None,
+                  external_memory="", ruby=False, security=False):
     assert machine_type
 
     default_dtbs = {
@@ -287,20 +267,22 @@ def makeArmSystem(mem_mode, machine_type, num_cpus=1, mdesc=None,
 
     self.cf0 = CowIdeDisk(driveID='master')
     self.cf0.childImage(mdesc.disk())
-    self.cf1 = NullIdeDisk(driveID='master',
-                           ssd_enable=True,
-                           ssd_config=SSDConfig)
-    self.cf1.setSize(getSSDSize(SSDConfig))
     # Old platforms have a built-in IDE or CF controller. Default to
     # the IDE controller if both exist. New platforms expect the
     # storage controller to be added from the config script.
     if hasattr(self.realview, "ide"):
-        self.realview.ide.disks = [self.cf0, self.cf1]
+        self.realview.ide.disks = [self.cf0]
     elif hasattr(self.realview, "cf_ctrl"):
-        self.realview.cf_ctrl.disks = [self.cf0, self.cf1]
+        self.realview.cf_ctrl.disks = [self.cf0]
     else:
-        self.pci_ide = IdeController(disks=[self.cf0, self.cf1])
+        self.pci_ide = IdeController(disks=[self.cf0])
         pci_devices.append(self.pci_ide)
+
+    if hasattr(self.realview, "nvme"):
+        self.realview.nvme.NVMeConfig = SSDConfig
+    else:
+        self.pci_nvme = NVMeInterface(SSDConfig=SSDConfig)
+        pci_devices.append(self.pci_nvme)
 
     self.mem_ranges = []
     size_remain = long(Addr(mdesc.mem()))
@@ -538,8 +520,8 @@ def connectX86RubySystem(x86_sys):
     x86_sys.pc.attachIO(x86_sys.iobus, x86_sys._dma_ports)
 
 
-def makeX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
-                  self=None, Ruby=False):
+def makeX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, self=None,
+                  Ruby=False):
     if self == None:
         self = X86System()
 
@@ -579,12 +561,15 @@ def makeX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
 
     # Disks
     disk0 = CowIdeDisk(driveID='master')
-    disk2 = NullIdeDisk(driveID='master',
-                        ssd_enable=True,
-                        ssd_config=SSDConfig)
+    # disk2 = CowIdeDisk(driveID='master')
     disk0.childImage(mdesc.disk())
-    disk2.setSize(getSSDSize(SSDConfig))
-    self.pc.south_bridge.ide.disks = [disk0, disk2]
+    # disk2.childImage(disk('linux-bigswap2.img'))
+    self.pc.south_bridge.ide.disks = [disk0] # [disk0, disk2]
+
+    # NVMe
+    self.pc.south_bridge.nvme.SSDConfig = SSDConfig
+    self.pc.south_bridge.nvme.InterruptLine = 17
+    self.pc.south_bridge.nvme.InterruptPin = 1
 
     # Add in a Bios information structure.
     structures = [X86SMBiosBiosInformation()]
@@ -625,7 +610,16 @@ def makeX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
             source_bus_irq = 0 + (4 << 2),
             dest_io_apic_id = io_apic.id,
             dest_io_apic_intin = 16)
+    pci_dev5_inta = X86IntelMPIOIntAssignment(
+            interrupt_type = 'INT',
+            polarity = 'ConformPolarity',
+            trigger = 'ConformTrigger',
+            source_bus_id = 0,
+            source_bus_irq = 0 + (5 << 2),
+            dest_io_apic_id = io_apic.id,
+            dest_io_apic_intin = 17)
     base_entries.append(pci_dev4_inta)
+    base_entries.append(pci_dev5_inta)
     def assignISAInt(irq, apicPin):
         assign_8259_to_apic = X86IntelMPIOIntAssignment(
                 interrupt_type = 'ExtInt',
@@ -652,12 +646,12 @@ def makeX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
     self.intel_mp_table.base_entries = base_entries
     self.intel_mp_table.ext_entries = ext_entries
 
-def makeLinuxX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
-                       Ruby=False, cmdline=None):
+def makeLinuxX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, Ruby=False,
+                       cmdline=None):
     self = LinuxX86System()
 
     # Build up the x86 system and then specialize it for Linux
-    makeX86System(mem_mode, numCPUs, mdesc, SSDConfig, self, Ruby)
+    makeX86System(mem_mode, SSDConfig, numCPUs, mdesc, self, Ruby)
 
     # We assume below that there's at least 1MB of memory. We'll require 2
     # just to avoid corner cases.
@@ -699,7 +693,7 @@ def makeLinuxX86System(mem_mode, numCPUs=1, mdesc=None, SSDConfig=None,
 
     # Command line
     if not cmdline:
-        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/hda1'
+        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/sda1'
     self.boot_osflags = fillInCmdline(mdesc, cmdline)
     self.kernel = binary('x86_64-vmlinux-2.6.22.9')
     return self

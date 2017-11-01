@@ -48,6 +48,7 @@ from Device import BasicPioDevice, PioDevice, IsaFake, BadAddr, DmaDevice
 from PciHost import *
 from Ethernet import NSGigE, IGbE_igb, IGbE_e1000
 from Ide import *
+from NVMe import *
 from Platform import Platform
 from Terminal import Terminal
 from Uart import Uart
@@ -719,6 +720,8 @@ class VExpress_EMM(RealView):
         # Try to attach the I/O if it exists
         if hasattr(self, "ide"):
             devices.append(self.ide)
+        if hasattr(self, "nvme"):
+            devices.append(self.nvme)
         if hasattr(self, "ethernet"):
             devices.append(self.ethernet)
         return devices
@@ -729,6 +732,8 @@ class VExpress_EMM(RealView):
                                    InterruptLine=1, InterruptPin=1)
         self.ide = IdeController(disks = [], pci_bus=0, pci_dev=1, pci_func=0,
                                  InterruptLine=2, InterruptPin=2)
+        self.nvme = NVMeInterface(pci_func=0, pci_dev=2, pci_bus=0,
+                                  InterruptLine=3, InterruptPin=3)
 
     def enableMSIX(self):
         self.gic = Pl390(dist_addr=0x2C001000, cpu_addr=0x2C002000, it_lines=512)

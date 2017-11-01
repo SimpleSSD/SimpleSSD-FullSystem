@@ -59,9 +59,6 @@ namespace X86ISA
         class ConfigTable;
     }
 
-    void installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
-                        SegDescriptor desc, bool longmode);
-
     /* memory mappings for KVMCpu in SE mode */
     const uint64_t syscallCodeVirtAddr = 0xffff800000000000;
     const uint64_t syscallCodePhysAddr = 0x60000;

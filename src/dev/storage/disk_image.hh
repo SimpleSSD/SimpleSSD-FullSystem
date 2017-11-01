@@ -40,7 +40,6 @@
 
 #include "params/CowDiskImage.hh"
 #include "params/DiskImage.hh"
-#include "params/NullDiskImage.hh"
 #include "params/RawDiskImage.hh"
 #include "sim/sim_object.hh"
 
@@ -136,22 +135,6 @@ class CowDiskImage : public DiskImage
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
-
-    std::streampos size() const override;
-
-    std::streampos read(uint8_t *data, std::streampos offset) const override;
-    std::streampos write(const uint8_t *data, std::streampos offset) override;
-};
-
-class NullDiskImage : public DiskImage
-{
-  protected:
-    uint64_t disk_size;
-
-  public:
-    typedef NullDiskImageParams Params;
-    NullDiskImage(const Params *p);
-    ~NullDiskImage();
 
     std::streampos size() const override;
 

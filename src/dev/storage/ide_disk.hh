@@ -57,12 +57,6 @@
 #include "sim/eventq.hh"
 
 class ChunkGenerator;
-class PAL2;
-class FTL;
-class PALStatistics;
-class Parameter;
-class BaseConfig;
-class Latency;
 
 #define DMA_BACKOFF_PERIOD      200
 
@@ -223,17 +217,6 @@ class IdeDisk : public SimObject
     int diskDelay;
 
   private:
-    bool ssdEnabled;
-    std::string ssdConfig;
-
-    BaseConfig *config;
-
-    PAL2 *pal;
-    PALStatistics *stats;
-    Latency *lat;
-    FTL *ftl;
-    Parameter *param;
-
     /** Drive identification structure for this disk */
     struct ataparams driveID;
     /** Data buffer for transfers */

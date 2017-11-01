@@ -47,6 +47,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <ctime>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -198,7 +199,9 @@ pseudoInst(ThreadContext *tc, uint8_t func, uint8_t subfunc)
         break;
 
       case M5OP_ANNOTATE:
-      case M5OP_RESERVED2:
+      case M5OP_GET_TICK:
+        return m5GetTick(tc, args[0]);
+
       case M5OP_RESERVED3:
       case M5OP_RESERVED4:
       case M5OP_RESERVED5:
@@ -714,6 +717,19 @@ workend(ThreadContext *tc, uint64_t workid, uint64_t threadid)
             exitSimLoop("work items exit count reached");
         }
     }
+}
+
+uint64_t
+m5GetTick(ThreadContext *tc, Addr t) {
+  struct timespec real;
+
+  uint64_t tick = curTick();
+  real.tv_nsec = (tick / 1000) % 1000000000;
+  real.tv_sec = (tick / 1000) / 1000000000;
+
+  CopyIn(tc, t, &real, sizeof(struct timespec));
+
+  return tick;
 }
 
 } // namespace PseudoInst

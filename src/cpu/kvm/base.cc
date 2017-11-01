@@ -1142,7 +1142,7 @@ BaseKvmCPU::doMMIOAccess(Addr paddr, void *data, int size, bool write)
         const Cycles ipr_delay(write ?
                              TheISA::handleIprWrite(tc, pkt) :
                              TheISA::handleIprRead(tc, pkt));
-        threadContextDirty = true;
+
         delete pkt->req;
         delete pkt;
         return clockPeriod() * ipr_delay;
@@ -1297,6 +1297,7 @@ BaseKvmCPU::setupCounters()
     // exclude_host since different architectures use slightly
     // different APIs in the kernel.
     cfgCycles.exclude_hv(true)
+        .exclude_kernel(true)
         .exclude_host(true);
 
     if (perfControlledByTimer) {
@@ -1375,6 +1376,7 @@ BaseKvmCPU::setupInstCounter(uint64_t period)
     // exclude_host since different architectures use slightly
     // different APIs in the kernel.
     cfgInstructions.exclude_hv(true)
+        .exclude_kernel(true)
         .exclude_host(true);
 
     if (period) {

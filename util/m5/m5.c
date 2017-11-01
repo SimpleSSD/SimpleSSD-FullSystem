@@ -268,6 +268,19 @@ do_addsymbol(int argc, char *argv[])
     m5_add_symbol(addr, symbol);
 }
 
+void
+do_get_tick(int argc, char *argv[])
+{
+    if (argc > 0)
+        usage();
+
+    struct timespec now;
+    uint64_t tick = m5_get_tick(&now);
+
+    printf("Simulation Tick: %" PRIu64 "\n", tick);
+    printf("In timespec format: %" PRIu64 "sec\n", now.tv_sec);
+    printf("                    %" PRIu64 "nsec\n", now.tv_nsec);
+}
 
 void
 do_loadsymbol(int argc, char *argv[])
@@ -352,6 +365,7 @@ struct MainFunc mainfuncs[] = {
     { "initparam",      do_initparam,        "[key] // key must be shorter"
                                              " than 16 chars" },
     { "sw99param",      do_sw99param,        "" },
+    { "tick",           do_get_tick,         "" },
 #ifdef linux
     { "pin",            do_pin,              "<cpu> <program> [args ...]" }
 #endif

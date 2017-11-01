@@ -93,10 +93,9 @@ For more details, see:
 """
     raise
 
-# We ensure the python version early because because python-config
-# requires python 2.5
+# pybind11 requires python 2.7
 try:
-    EnsurePythonVersion(2, 5)
+    EnsurePythonVersion(2, 7)
 except SystemExit, e:
     print """
 You can use a non-default installation of the Python interpreter by
@@ -554,8 +553,14 @@ Export('extras_dir_list')
 # the ext directory should be on the #includes path
 main.Append(CPPPATH=[Dir('ext')])
 
+# SimpleSSD
+main.Append(CPPPATH=[Dir('src/dev/storage/simplessd')])
+
 # Add shared top-level headers
 main.Prepend(CPPPATH=Dir('include'))
+
+# Add simplessd directory
+main.Append(CPPPATH=Dir('src/dev/storage/simplessd'))
 
 def strip_build_path(path, env):
     path = str(path)
@@ -693,7 +698,7 @@ if main['GCC'] or main['CLANG']:
         main.Append(CXXFLAGS=['-I/usr/local/include'])
 
     # Maybe gem5 uses inttypes.h somewhere.
-    # For old compilers, cinttypes macro not defined.
+    # For old compilers, macro for cinttypes not defined.
     # So define __STDC_FORMAT_MACROS here.
     main.Append(CXXFLAGS=['-D__STDC_FORMAT_MACROS'])
 

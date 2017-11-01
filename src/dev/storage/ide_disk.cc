@@ -48,7 +48,6 @@
 #include "dev/storage/ide_disk.hh"
 
 #include <cerrno>
-#include <cinttypes>
 #include <cstring>
 #include <deque>
 #include <string>
@@ -61,13 +60,6 @@
 #include "debug/IdeDisk.hh"
 #include "dev/storage/disk_image.hh"
 #include "dev/storage/ide_ctrl.hh"
-#include "dev/storage/simplessd/base_config.hh"
-#include "dev/storage/simplessd/LatencyMLC.h"
-#include "dev/storage/simplessd/LatencySLC.h"
-#include "dev/storage/simplessd/LatencyTLC.h"
-#include "dev/storage/simplessd/PAL2.h"
-#include "dev/storage/simplessd/PALStatistics.h"
-#include "dev/storage/simplessd/ftl.hh"
 #include "sim/core.hh"
 #include "sim/sim_object.hh"
 
@@ -76,8 +68,6 @@ using namespace TheISA;
 
 IdeDisk::IdeDisk(const Params *p)
     : SimObject(p), ctrl(NULL), image(p->image), diskDelay(p->delay),
-      ssdEnabled(p->ssd_enable), ssdConfig(p->ssd_config),
-      pal(nullptr), stats(nullptr), lat(nullptr), ftl(nullptr), param(nullptr),
       dmaTransferEvent([this]{ doDmaTransfer(); }, name()),
       dmaReadCG(NULL),
       dmaReadWaitEvent([this]{ doDmaRead(); }, name()),
@@ -148,65 +138,12 @@ IdeDisk::IdeDisk(const Params *p)
 
     //arbitrary for now...
     driveID.atap_ata_major = WDC_VER_ATA7;
-
-    if (ssdEnabled) {
-        config = new BaseConfig(ssdConfig);
-
-        switch (config->NANDType) {
-          case NAND_SLC:
-            lat = new LatencySLC(config->DMAMHz, config->SizePage);
-            break;
-          case NAND_MLC:
-            lat = new LatencyMLC(config->DMAMHz, config->SizePage);
-            break;
-          case NAND_TLC:
-            lat = new LatencyTLC(config->DMAMHz, config->SizePage);
-            break;
-        }
-
-        stats = new PALStatistics(config, lat);
-        pal = new PAL2(stats, config, lat);
-
-        int sbd = config->NumChannel *
-                  config->NumPackage *
-                  config->NumDie *
-                  config->NumPlane;
-
-        param = new Parameter();
-        param->over_provide = config->FTLOP;
-        param->page_per_block = config->NumPage * sbd;
-        param->physical_block_number = config->NumBlock;
-        param->logical_block_number = (double)param->physical_block_number *
-                                      (1 - param->over_provide);
-        param->physical_page_number = param->physical_block_number *
-                                      param->page_per_block;
-        param->logical_page_number = param->logical_block_number *
-                                     param->page_per_block;
-        param->warmup = config->Warmup;
-        param->gc_threshold = config->FTLGCThreshold;
-        param->page_size = config->SizePage / SectorSize;
-        param->mapping_K = config->FTLMapK;
-        param->mapping_N = config->FTLMapN;
-        param->erase_cycle = config->FTLEraseCycle;
-        param->page_byte = config->SizePage;
-
-        ftl = new FTL(param, pal);
-        ftl->initialize();
-    }
 }
 
 IdeDisk::~IdeDisk()
 {
     // destroy the data buffer
     delete [] dataBuffer;
-
-    if (ssdEnabled) {
-        delete ftl;
-        delete param;
-        delete pal;
-        delete stats;
-        delete config;
-    }
 }
 
 void
@@ -451,23 +388,6 @@ IdeDisk::doDmaDataRead()
     /** @todo we need to figure out what the delay actually will be */
     Tick totalDiskDelay = diskDelay + (curPrd.getByteCount() / SectorSize);
 
-    if (ssdEnabled) {
-        uint32_t nblk;
-        uint64_t slpn;
-        uint16_t nlp, offset;
-
-        nblk = (curPrd.getByteCount() - 1) / SectorSize + 1;
-
-        slpn = curSector / param->page_size;
-        offset = curSector % param->page_size;
-        nlp = (nblk + offset + param->page_size - 1) / param->page_size;
-
-        DPRINTF(IdeDisk, "doDmaRead, sector %d + %d -> LPN %" PRIu64 " + %d\n",
-                curSector, nblk, slpn, nlp);
-
-        totalDiskDelay = ftl->write(slpn, nlp);
-    }
-
     DPRINTF(IdeDisk, "doDmaRead, diskDelay: %d totalDiskDelay: %d\n",
             diskDelay, totalDiskDelay);
 
@@ -575,23 +495,6 @@ IdeDisk::doDmaDataWrite()
     /** @todo we need to figure out what the delay actually will be */
     Tick totalDiskDelay = diskDelay + (curPrd.getByteCount() / SectorSize);
     uint32_t bytesRead = 0;
-
-    if (ssdEnabled) {
-        uint32_t nblk;
-        uint64_t slpn;
-        uint16_t nlp, offset;
-
-        nblk = (curPrd.getByteCount() - 1) / SectorSize + 1;
-
-        slpn = curSector / param->page_size;
-        offset = curSector % param->page_size;
-        nlp = (nblk + offset + param->page_size - 1) / param->page_size;
-
-        DPRINTF(IdeDisk, "doDmaWrite, sector %d + %d -> LPN %" PRIu64 " + %d\n",
-                curSector, nblk, slpn, nlp);
-
-        totalDiskDelay = ftl->read(slpn, nlp);
-    }
 
     DPRINTF(IdeDisk, "doDmaWrite, diskDelay: %d totalDiskDelay: %d\n",
             diskDelay, totalDiskDelay);
