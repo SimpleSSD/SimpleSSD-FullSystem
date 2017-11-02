@@ -65,6 +65,7 @@
 #include "cpu/quiesce_event.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
+#include "debug/M5Print.hh"
 #include "debug/PseudoInst.hh"
 #include "debug/Quiesce.hh"
 #include "debug/WorkItems.hh"
@@ -202,7 +203,10 @@ pseudoInst(ThreadContext *tc, uint8_t func, uint8_t subfunc)
       case M5OP_GET_TICK:
         return m5GetTick(tc, args[0]);
 
-      case M5OP_RESERVED3:
+      case M5OP_PRINT:
+        m5print(tc, args[0], args[1]);
+        break;
+
       case M5OP_RESERVED4:
       case M5OP_RESERVED5:
         warn("Unimplemented m5 op (0x%x)\n", func);
@@ -730,6 +734,16 @@ m5GetTick(ThreadContext *tc, Addr t) {
   CopyIn(tc, t, &real, sizeof(struct timespec));
 
   return tick;
+}
+
+void
+m5print(ThreadContext *tc, Addr str, uint64_t len) {
+  char *buf = (char *)calloc(len + 1, 1);
+
+  CopyOut(tc, buf, str, len);
+  DPRINTF(M5Print, "Log from guest: %s\n", buf);
+
+  free(buf);
 }
 
 } // namespace PseudoInst

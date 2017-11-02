@@ -283,6 +283,14 @@ do_get_tick(int argc, char *argv[])
 }
 
 void
+do_print(int argc, char *argv[]) {
+  if (argc != 1)
+    usage();
+
+  m5_print(argv[0], strlen(argv[0]));
+}
+
+void
 do_loadsymbol(int argc, char *argv[])
 {
     if (argc > 0)
@@ -366,6 +374,7 @@ struct MainFunc mainfuncs[] = {
                                              " than 16 chars" },
     { "sw99param",      do_sw99param,        "" },
     { "tick",           do_get_tick,         "" },
+    { "print",          do_print,            "<string>" },
 #ifdef linux
     { "pin",            do_pin,              "<cpu> <program> [args ...]" }
 #endif

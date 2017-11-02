@@ -488,7 +488,8 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
     #  4) then the entire PCI address space and beyond.
     x86_sys.bridge.ranges = \
         [
-        AddrRange(0xC0000000, 0xFFFF0000),
+        AddrRange(0xC0000000, 0xFEE00000 - 1),
+        AddrRange(0xFEF00000, 0xFFFF0000),
         AddrRange(IO_address_space_base,
                   interrupts_address_space_base - 1),
         AddrRange(pci_config_address_space_base,
@@ -500,7 +501,8 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
     x86_sys.apicbridge = Bridge(delay='50ns')
     x86_sys.apicbridge.slave = x86_sys.iobus.master
     x86_sys.apicbridge.master = x86_sys.membus.slave
-    x86_sys.apicbridge.ranges = [AddrRange(interrupts_address_space_base,
+    x86_sys.apicbridge.ranges = [AddrRange(0xFEE00000, 0xFEF00000 - 1),
+                                 AddrRange(interrupts_address_space_base,
                                            interrupts_address_space_base +
                                            numCPUs * APIC_range_size
                                            - 1)]

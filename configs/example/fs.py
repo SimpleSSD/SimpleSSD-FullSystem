@@ -192,7 +192,14 @@ def build_test_system(np, SSDConfig):
             test_sys.iocache.cpu_side = test_sys.iobus.master
             test_sys.iocache.mem_side = test_sys.membus.slave
         elif not options.external_memory_system:
-            test_sys.iobridge = Bridge(delay='50ns', ranges = test_sys.mem_ranges)
+            mem_range = list(test_sys.mem_ranges)   # Copy list
+
+            # This codes for bypass MSI/MSI-X interrupts to GICv2m
+            if buildEnv['TARGET_ISA'] == "arm":
+                if options.machine_type == "VExpress_GEM5_V1":
+                    mem_range.append(AddrRange(0x2C1C0000, 0x2C1D0000 - 1))
+
+            test_sys.iobridge = Bridge(delay='50ns', ranges = mem_range)
             test_sys.iobridge.slave = test_sys.iobus.master
             test_sys.iobridge.master = test_sys.membus.slave
 
@@ -233,6 +240,14 @@ def build_test_system(np, SSDConfig):
         CacheConfig.config_cache(options, test_sys)
 
         MemConfig.config_mem(options, test_sys)
+
+    if buildEnv['TARGET_ISA'] == "x86":
+        lapics = []
+
+        for i in xrange(np):
+            lapics.append(test_sys.cpu[i].interrupts[0])
+
+        test_sys.membus.lapics = lapics
 
     if is_kvm_cpu(TestCPUClass) or is_kvm_cpu(FutureClass):
         test_sys.eventq_index = 0

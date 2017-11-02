@@ -75,6 +75,7 @@ if env['TARGET_ISA'] != 'null':
     Source('page_table.cc')
 if env['TARGET_ISA'] == 'x86':
     Source('multi_level_page_table.cc')
+    DebugFlag('SystemXBar')
 
 if env['HAVE_DRAMSIM']:
     SimObject('DRAMSim2.py')

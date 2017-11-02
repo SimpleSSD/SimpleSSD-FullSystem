@@ -210,11 +210,11 @@
                     0x55: m5reserved1({{
                         warn("M5 reserved opcode 1 ignored.\n");
                     }}, IsNonSpeculative);
-                    0x56: m5reserved2({{
-                        warn("M5 reserved opcode 2 ignored.\n");
+                    0x56: m5tick({{
+                        PseudoInst::m5GetTick(xc->tcBase(), Rdi);
                     }}, IsNonSpeculative);
-                    0x57: m5reserved3({{
-                        warn("M5 reserved opcode 3 ignored.\n");
+                    0x57: m5print({{
+                        PseudoInst::m5print(xc->tcBase(), Rdi, Rsi);
                     }}, IsNonSpeculative);
                     0x58: m5reserved4({{
                         warn("M5 reserved opcode 4 ignored.\n");

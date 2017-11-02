@@ -2026,6 +2026,8 @@ namespace Aarch64
           case M5OP_SWITCH_CPU: return new M5switchcpu(machInst);
           case M5OP_ADD_SYMBOL: return new M5addsymbol64(machInst);
           case M5OP_PANIC: return new M5panic(machInst);
+          case M5OP_GET_TICK: return new M5tick64(machInst);
+          case M5OP_PRINT: return new M5print64(machInst);
           case M5OP_WORK_BEGIN: return new M5workbegin64(machInst);
           case M5OP_WORK_END: return new M5workend64(machInst);
           default: return new Unknown64(machInst);

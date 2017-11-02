@@ -88,6 +88,8 @@ void debugbreak(ThreadContext *tc);
 void switchcpu(ThreadContext *tc);
 void workbegin(ThreadContext *tc, uint64_t workid, uint64_t threadid);
 void workend(ThreadContext *tc, uint64_t workid, uint64_t threadid);
+uint64_t m5GetTick(ThreadContext *tc, Addr t);
+void m5print(ThreadContext *tc, Addr str, uint64_t len);
 void togglesync(ThreadContext *tc);
 uint64_t m5GetTick(ThreadContext *tc, Addr t);
 

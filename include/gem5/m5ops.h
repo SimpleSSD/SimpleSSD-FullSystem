@@ -60,6 +60,7 @@ uint64_t m5_read_file(void *buffer, uint64_t len, uint64_t offset);
 uint64_t m5_write_file(void *buffer, uint64_t len, uint64_t offset,
                        const char *filename);
 uint64_t m5_get_tick(struct timespec *tick);
+void m5_print(const char *string, uint64_t length);
 void m5_debug_break(void);
 void m5_switch_cpu(void);
 void m5_dist_toggle_sync(void);

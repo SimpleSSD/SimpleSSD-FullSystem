@@ -111,5 +111,6 @@ DebugFlag('WorkItems')
 DebugFlag('ClockDomain')
 DebugFlag('VoltageDomain')
 DebugFlag('DVFS')
+DebugFlag('M5Print')
 
 CompoundFlag('SyscallAll', [ 'SyscallBase', 'SyscallVerbose'])
