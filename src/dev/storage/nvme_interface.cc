@@ -26,16 +26,24 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
-using namespace SimpleSSD;
+#undef panic
+#undef warn
+#undef info
+
+#include "dev/storage/simplessd/log/log.hh"
+#include "dev/storage/simplessd/log/trace.hh"
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p), configPath(p->SSDConfig), periodWork(0), periodQueue(0),
       IS(0), ISold(0), mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
+  SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
+                                   []() -> uint64_t { return curTick(); });
+
   if (!conf.init(configPath)) {
-    panic("Failed to read SimpleSSD configuration");
+    SimpleSSD::Logger::panic("Failed to read SimpleSSD configuration");
   }
 
-  pController = new HIL::NVMe::Controller(this, &conf);
+  pController = new SimpleSSD::HIL::NVMe::Controller(this, &conf);
 }
 
 NVMeInterface::~NVMeInterface() { delete pController; }
@@ -62,7 +70,8 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
                  offset + i < PXCAP_BASE + PXCAP_SIZE) {
         val |= (uint32_t)pxcap.data[offset + i - PXCAP_BASE] << (i * 8);
       } else {
-        warn("nvme_interface: Invalid PCI config read offset: %#x\n", offset);
+        SimpleSSD::Logger::warn(
+            "nvme_interface: Invalid PCI config read offset: %#x", offset);
       }
     }
 
@@ -77,7 +86,8 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
       pkt->set<uint32_t>(val);
       break;
     default:
-      warn("nvme_interface: Invalid PCI config read size: %d\n", size);
+      SimpleSSD::Logger::warn(
+          "nvme_interface: Invalid PCI config read size: %d", size);
       break;
     }
 
@@ -128,8 +138,9 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 
       vectors = (uint16_t)powf(2, (msicap.mc & 0x0070) >> 4);
 
-      DPRINTF(NVMeInterrupt, "INTR    | MSI %s | %d vectors\n",
-              mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
+      SimpleSSD::Logger::debugprint(
+          SimpleSSD::Logger::LOG_HIL_NVME, "INTR    | MSI %s | %d vectors",
+          mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
     } else if (offset == MSICAP_BASE + 4 &&
                size == sizeof(uint32_t)) { // MSICAP Message Address
       msicap.ma = pkt->get<uint32_t>() & 0xFFFFFFFC;
@@ -156,8 +167,9 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 
       vectors = (msixcap.mxc & 0x07FF) + 1;
 
-      DPRINTF(NVMeInterrupt, "INTR    | MSI-X %s | %d vectors\n",
-              mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
+      SimpleSSD::Logger::debugprint(
+          SimpleSSD::Logger::LOG_HIL_NVME, "INTR    | MSI-X %s | %d vectors",
+          mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
     } else if (offset == PXCAP_BASE + 8 &&
                size == sizeof(uint16_t)) { // PXCAP Device Capabilities
       pxcap.pxdc = pkt->get<uint16_t>();
@@ -194,8 +206,9 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
                size == sizeof(uint32_t)) { // PXCAP Device Control 2
       pxcap.pxdc2 = pkt->get<uint32_t>();
     } else {
-      panic("nvme_interface: Invalid PCI config write offset: %#x size: %d\n",
-            offset, size);
+      SimpleSSD::Logger::panic(
+          "nvme_interface: Invalid PCI config write offset: %#x size: %d",
+          offset, size);
     }
 
     pkt->makeAtomicResponse();
@@ -214,7 +227,7 @@ Tick NVMeInterface::read(PacketPtr pkt) {
   if (addr >= register_addr && addr + size <= register_addr + register_size) {
     int offset = addr - register_addr;
 
-    if (offset >= HIL::NVMe::REG_DOORBELL_BEGIN) {
+    if (offset >= SimpleSSD::HIL::NVMe::REG_DOORBELL_BEGIN) {
       // Read on doorbell register is vendor specific
       memset(buffer, 0, size);
     } else {
@@ -225,9 +238,10 @@ Tick NVMeInterface::read(PacketPtr pkt) {
   } else if (addr >= pba_addr && addr + size <= pba_addr + pba_size) {
 
   } else {
-    panic("nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
-          " addr: %016" PRIX64 "\n",
-          register_addr, addr);
+    SimpleSSD::Logger::panic(
+        "nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
+        " addr: %016" PRIX64 "",
+        register_addr, addr);
   }
 
   pkt->makeAtomicResponse();
@@ -245,7 +259,7 @@ Tick NVMeInterface::write(PacketPtr pkt) {
   if (addr >= register_addr && addr + size <= register_addr + register_size) {
     int offset = addr - register_addr;
 
-    if (offset >= HIL::NVMe::REG_DOORBELL_BEGIN) {
+    if (offset >= SimpleSSD::HIL::NVMe::REG_DOORBELL_BEGIN) {
       const int dstrd = 4;
       uint32_t uiTemp, uiMask;
       uint16_t uiDoorbell;
@@ -254,7 +268,7 @@ Tick NVMeInterface::write(PacketPtr pkt) {
       memcpy(&uiDoorbell, buffer, 2);
 
       // Calculate Queue Type and Queue ID from offset
-      offset -= HIL::NVMe::REG_DOORBELL_BEGIN;
+      offset -= SimpleSSD::HIL::NVMe::REG_DOORBELL_BEGIN;
       uiTemp = offset / dstrd;
       uiMask = (uiTemp & 0x00000001); // 0 for Submission Queue Tail Doorbell
                                       // 1 for Completion Queue Head Doorbell
@@ -279,9 +293,10 @@ Tick NVMeInterface::write(PacketPtr pkt) {
 
     memcpy(&msix_pba.at(entry) + offset, buffer, size);
   } else {
-    panic("nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
-          " addr: %016" PRIX64 "\n",
-          register_addr, addr);
+    SimpleSSD::Logger::panic(
+        "nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
+        " addr: %016" PRIX64 "",
+        register_addr, addr);
   }
 
   pkt->makeAtomicResponse();
@@ -319,11 +334,13 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
     if (IS == 0) {
       intrClear();
 
-      DPRINTF(NVMeInterrupt, "INTR    | Pin Interrupt Clear\n");
+      SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
+                                    "INTR    | Pin Interrupt Clear");
     } else {
       intrPost();
 
-      DPRINTF(NVMeInterrupt, "INTR    | Pin Interrupt Post\n");
+      SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
+                                    "INTR    | Pin Interrupt Post");
     }
 
     ISold = IS;
@@ -342,7 +359,8 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
       writeInterrupt(((uint64_t)msicap.mua << 32) | msicap.ma, sizeof(uint32_t),
                      (uint8_t *)&data);
 
-      DPRINTF(NVMeInterrupt, "INTR    | MSI sent | vector %d\n", iv);
+      SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
+                                    "INTR    | MSI sent | vector %d", iv);
     }
   }
 
@@ -355,7 +373,8 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
                          table.fields.addr_lo,
                      sizeof(uint32_t), (uint8_t *)&table.fields.msg_data);
 
-      DPRINTF(NVMeInterrupt, "INTR    | MSI-X sent | vector %d\n", iv);
+      SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
+                                    "INTR    | MSI-X sent | vector %d", iv);
     }
   }
 

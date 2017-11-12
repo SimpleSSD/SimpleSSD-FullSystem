@@ -80,12 +80,12 @@ public:
   void unserialize(CheckpointIn &cp) override;
 
   // Interface <-> Controller
-  void dmaRead(uint64_t, uint64_t, uint8_t *);
-  void dmaWrite(uint64_t, uint64_t, uint8_t *);
-  void updateInterrupt(uint16_t, bool);
-  void getVendorID(uint16_t &, uint16_t &);
-  void enableController(Tick, Tick);
-  void disableController();
+  void dmaRead(uint64_t, uint64_t, uint8_t *) override;
+  void dmaWrite(uint64_t, uint64_t, uint8_t *) override;
+  void updateInterrupt(uint16_t, bool) override;
+  void getVendorID(uint16_t &, uint16_t &) override;
+  void enableController(Tick, Tick) override;
+  void disableController() override;
   void doQueue();
   friend class EventWrapper<NVMeInterface, &NVMeInterface::doQueue>;
   EventWrapper<NVMeInterface, &NVMeInterface::doQueue> queueEvent;

@@ -279,7 +279,7 @@ def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
         pci_devices.append(self.pci_ide)
 
     if hasattr(self.realview, "nvme"):
-        self.realview.nvme.NVMeConfig = SSDConfig
+        self.realview.nvme.SSDConfig = SSDConfig
     else:
         self.pci_nvme = NVMeInterface(SSDConfig=SSDConfig)
         pci_devices.append(self.pci_nvme)
