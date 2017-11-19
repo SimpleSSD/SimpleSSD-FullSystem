@@ -186,18 +186,28 @@ def build_test_system(np, SSDConfig):
                 cpu.interrupts[0].int_slave = test_sys.ruby._cpu_ports[i].master
 
     else:
+        gicv2m_range = AddrRange(0x2C1C0000, 0x2C1D0000 - 1)
+
         if options.caches or options.l2cache:
             # By default the IOCache runs at the system clock
             test_sys.iocache = IOCache(addr_ranges = test_sys.mem_ranges)
             test_sys.iocache.cpu_side = test_sys.iobus.master
             test_sys.iocache.mem_side = test_sys.membus.slave
+
+            if buildEnv['TARGET_ISA'] == "arm":
+                if options.machine_type == "VExpress_GEM5_V1":
+                    test_sys.iobridge = Bridge(delay='50ns',
+                                               ranges = [gicv2m_range])
+                    test_sys.iobridge.slave = test_sys.iobus.master
+                    test_sys.iobridge.master = test_sys.membus.slave
+
         elif not options.external_memory_system:
             mem_range = list(test_sys.mem_ranges)   # Copy list
 
             # This codes for bypass MSI/MSI-X interrupts to GICv2m
             if buildEnv['TARGET_ISA'] == "arm":
                 if options.machine_type == "VExpress_GEM5_V1":
-                    mem_range.append(AddrRange(0x2C1C0000, 0x2C1D0000 - 1))
+                    mem_range.append(gicv2m_range)
 
             test_sys.iobridge = Bridge(delay='50ns', ranges = mem_range)
             test_sys.iobridge.slave = test_sys.iobus.master
