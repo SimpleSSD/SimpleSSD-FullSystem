@@ -34,6 +34,8 @@ typedef enum _INTERRUPT_MODE {
   INTERRUPT_MSIX
 } INTERRUPT_MODE;
 
+#define DMA_DELAY 256.90625
+
 class NVMeInterface : public PciDevice, public SimpleSSD::HIL::NVMe::Interface {
 private:
   std::string configPath;
@@ -44,6 +46,11 @@ private:
 
   Tick periodWork;
   Tick periodQueue;
+
+  // DMA scheduling
+  const float psPerByte;
+  uint64_t lastReadDMAEndAt;
+  uint64_t lastWriteDMAEndAt;
 
   /* Interrupt logics */
   // Pin based
@@ -80,8 +87,8 @@ public:
   void unserialize(CheckpointIn &cp) override;
 
   // Interface <-> Controller
-  void dmaRead(uint64_t, uint64_t, uint8_t *) override;
-  void dmaWrite(uint64_t, uint64_t, uint8_t *) override;
+  uint64_t dmaRead(uint64_t, uint64_t, uint8_t *, uint64_t &) override;
+  uint64_t dmaWrite(uint64_t, uint64_t, uint8_t *, uint64_t &) override;
   void updateInterrupt(uint16_t, bool) override;
   void getVendorID(uint16_t &, uint16_t &) override;
   void enableController(Tick, Tick) override;

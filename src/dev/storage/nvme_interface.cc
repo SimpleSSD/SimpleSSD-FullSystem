@@ -35,7 +35,8 @@
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p), configPath(p->SSDConfig), periodWork(0), periodQueue(0),
-      IS(0), ISold(0), mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
+      psPerByte(DMA_DELAY), lastReadDMAEndAt(0), lastWriteDMAEndAt(0), IS(0),
+      ISold(0), mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
   SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
                                    []() -> uint64_t { return curTick(); });
 
@@ -310,12 +311,58 @@ void NVMeInterface::writeInterrupt(Addr addr, size_t size, uint8_t *data) {
   DmaDevice::dmaWrite(dmaAddr, size, NULL, data);
 }
 
-void NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer) {
-  DmaDevice::dmaRead(pciToDma(addr), size, nullptr, buffer);
+uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
+                                uint64_t &tick) {
+  uint64_t latency = (uint64_t)(psPerByte * size + 0.5);
+  uint64_t delay = 0;
+
+  // DMA Scheduling
+  if (tick == 0) {
+    tick = lastReadDMAEndAt;
+  }
+
+  if (lastReadDMAEndAt <= tick) {
+    lastReadDMAEndAt = tick + latency;
+  } else {
+    delay = lastReadDMAEndAt - tick;
+    lastReadDMAEndAt += latency;
+  }
+
+  if (buffer) {
+    DmaDevice::dmaRead(pciToDma(addr), size, nullptr, buffer);
+  }
+
+  delay += tick;
+  tick = delay + latency;
+
+  return delay;
 }
 
-void NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer) {
-  DmaDevice::dmaWrite(pciToDma(addr), size, nullptr, buffer);
+uint64_t NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
+                                 uint64_t &tick) {
+  uint64_t latency = (uint64_t)(psPerByte * size + 0.5);
+  uint64_t delay = 0;
+
+  // DMA Scheduling
+  if (tick == 0) {
+    tick = lastWriteDMAEndAt;
+  }
+
+  if (lastWriteDMAEndAt <= tick) {
+    lastWriteDMAEndAt = tick + latency;
+  } else {
+    delay = lastWriteDMAEndAt - tick;
+    lastWriteDMAEndAt += latency;
+  }
+
+  if (buffer) {
+    DmaDevice::dmaWrite(pciToDma(addr), size, nullptr, buffer);
+  }
+
+  delay += tick;
+  tick = delay + latency;
+
+  return delay;
 }
 
 void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
