@@ -396,6 +396,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_ES:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_CS:
         if (seg.base & 0xffffffff00000000ULL)
             warn("Illegal %s base: 0x%x\n", name, seg.base);
@@ -433,7 +434,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
           case 3:
             if (sregs.cs.type == 3 && seg.dpl != 0)
                 warn("CS type is 3, but SS DPL is != 0.\n");
-            /* FALLTHROUGH */
+            M5_FALLTHROUGH;
           case 7:
             if (!(sregs.cr0 & 1) && seg.dpl != 0)
                 warn("SS DPL is %i, but CR0 PE is 0\n", seg.dpl);
@@ -477,6 +478,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_GS:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_CS:
         if (!seg.s)
             warn("%s: S flag not set\n", name);
@@ -485,6 +487,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_TSL:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_TR:
         if (seg.s)
             warn("%s: S flag is set\n", name);
@@ -500,13 +503,14 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_TSL:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_TR:
       case MISCREG_CS:
         if (!seg.present)
             warn("%s: P flag not set\n", name);
 
-        if ((bits(seg.limit, 11, 0) != mask(12) && seg.g) ||
-            (bits(seg.limit, 31, 20) && !seg.g)) {
+        if (((seg.limit & 0xFFF) == 0 && seg.g) ||
+            ((seg.limit & 0xFFF00000) != 0 && !seg.g)) {
             warn("%s limit (0x%x) and g (%i) combination is illegal.\n",
                  name, seg.limit, seg.g);
         }
@@ -719,7 +723,12 @@ setKvmSegmentReg(ThreadContext *tc, struct kvm_segment &kvm_seg,
     kvm_seg.l = attr.longMode;
     kvm_seg.g = attr.granularity;
     kvm_seg.avl = attr.avl;
-    kvm_seg.unusable = attr.unusable;
+
+    // A segment is normally unusable when the selector is zero. There
+    // is a attr.unusable flag in gem5, but it seems unused. qemu
+    // seems to set this to 0 all the time, so we just do the same and
+    // hope for the best.
+    kvm_seg.unusable = 0;
 }
 
 static inline void

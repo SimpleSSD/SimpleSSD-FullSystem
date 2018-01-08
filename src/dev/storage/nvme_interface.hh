@@ -34,7 +34,8 @@ typedef enum _INTERRUPT_MODE {
   INTERRUPT_MSIX
 } INTERRUPT_MODE;
 
-#define DMA_DELAY 256.90625
+#define PCIE_GEN PCIE_2
+#define PCIE_LANE 4
 
 class NVMeInterface : public PciDevice, public SimpleSSD::HIL::NVMe::Interface {
 private:
@@ -48,7 +49,6 @@ private:
   Tick periodQueue;
 
   // DMA scheduling
-  const float psPerByte;
   uint64_t lastReadDMAEndAt;
   uint64_t lastWriteDMAEndAt;
 

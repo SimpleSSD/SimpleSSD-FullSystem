@@ -33,72 +33,6 @@
 //
 // Memory operation instructions
 //
-output header {{
-    class Load : public RiscvStaticInst
-    {
-      public:
-        /// Displacement for EA calculation (signed).
-        int64_t ldisp;
-
-      protected:
-        /// Memory request flags.  See mem_req_base.hh.
-        Request::Flags memAccessFlags;
-
-        /// Constructor
-        Load(const char *mnem, ExtMachInst _machInst, OpClass __opClass)
-            : RiscvStaticInst(mnem, _machInst, __opClass), ldisp(0)
-        {}
-
-        std::string
-        generateDisassembly(Addr pc, const SymbolTable *symtab) const;
-    };
-
-    class Store : public RiscvStaticInst
-    {
-      public:
-        /// Displacement for EA calculation (signed).
-        int64_t sdisp;
-
-      protected:
-        /// Memory request flags.  See mem_req_base.hh.
-        Request::Flags memAccessFlags;
-
-        /// Constructor
-        Store(const char *mnem, ExtMachInst _machInst, OpClass __opClass)
-            : RiscvStaticInst(mnem, _machInst, __opClass), sdisp(0)
-        {
-            sdisp = IMM5 | (IMM7 << 5);
-            if (IMMSIGN > 0)
-                sdisp |= ~((uint64_t)0xFFF);
-        }
-
-        std::string
-        generateDisassembly(Addr pc, const SymbolTable *symtab) const;
-    };
-
-}};
-
-
-output decoder {{
-    std::string
-    Load::generateDisassembly(Addr pc, const SymbolTable *symtab) const
-    {
-        std::stringstream ss;
-        ss << mnemonic << ' ' << registerName(_destRegIdx[0]) << ", " <<
-            ldisp << '(' << registerName(_srcRegIdx[0]) << ')';
-        return ss.str();
-    }
-
-    std::string
-    Store::generateDisassembly(Addr pc, const SymbolTable *symtab) const
-    {
-        std::stringstream ss;
-        ss << mnemonic << ' ' << registerName(_srcRegIdx[1]) << ", " <<
-            sdisp << '(' << registerName(_srcRegIdx[0]) << ')';
-        return ss.str();
-    }
-}};
-
 def template LoadStoreDeclare {{
     /**
      * Static instruction class for "%(mnemonic)s".
@@ -109,31 +43,12 @@ def template LoadStoreDeclare {{
         /// Constructor.
         %(class_name)s(ExtMachInst machInst);
 
-        %(BasicExecDeclare)s
-
-        %(EACompDeclare)s
-
-        %(InitiateAccDeclare)s
-
-        %(CompleteAccDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const;
+        Fault initiateAcc(ExecContext *, Trace::InstRecord *) const;
+        Fault completeAcc(PacketPtr, ExecContext *, Trace::InstRecord *) const;
     };
 }};
 
-def template EACompDeclare {{
-    Fault
-    eaComp(%(CPU_exec_context)s *, Trace::InstRecord *) const;
-}};
-
-def template InitiateAccDeclare {{
-    Fault
-    initiateAcc(%(CPU_exec_context)s *, Trace::InstRecord *) const;
-}};
-
-
-def template CompleteAccDeclare {{
-    Fault
-    completeAcc(PacketPtr, %(CPU_exec_context)s *, Trace::InstRecord *) const;
-}};
 
 def template LoadStoreConstructor {{
     %(class_name)s::%(class_name)s(ExtMachInst machInst):
@@ -141,27 +56,6 @@ def template LoadStoreConstructor {{
     {
         %(constructor)s;
         %(offset_code)s;
-    }
-}};
-
-def template EACompExecute {{
-    Fault
-    %(class_name)s::eaComp(CPU_EXEC_CONTEXT *xc,
-        Trace::InstRecord *traceData) const
-    {
-        Addr EA;
-        Fault fault = NoFault;
-
-        %(op_decl)s;
-        %(op_rd)s;
-        %(ea_code)s;
-
-        if (fault == NoFault) {
-            %(op_wb)s;
-            xc->setEA(EA);
-        }
-
-        return fault;
     }
 }};
 
@@ -194,15 +88,14 @@ def LoadStoreBase(name, Name, offset_code, ea_code, memacc_code, mem_flags,
         LoadStoreConstructor.subst(iop),
         decode_template.subst(iop),
         fullExecTemplate.subst(iop) +
-        EACompExecute.subst(iop) +
         initiateAccTemplate.subst(iop) +
         completeAccTemplate.subst(iop))
 }};
 
 def template LoadExecute {{
     Fault
-    %(class_name)s::execute(CPU_EXEC_CONTEXT *xc,
-        Trace::InstRecord *traceData) const
+    %(class_name)s::execute(
+        ExecContext *xc, Trace::InstRecord *traceData) const
     {
         Addr EA;
         Fault fault = NoFault;
@@ -226,7 +119,7 @@ def template LoadExecute {{
 
 def template LoadInitiateAcc {{
     Fault
-    %(class_name)s::initiateAcc(CPU_EXEC_CONTEXT *xc,
+    %(class_name)s::initiateAcc(ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
         Addr EA;
@@ -246,7 +139,7 @@ def template LoadInitiateAcc {{
 
 def template LoadCompleteAcc {{
     Fault
-    %(class_name)s::completeAcc(PacketPtr pkt, CPU_EXEC_CONTEXT *xc,
+    %(class_name)s::completeAcc(PacketPtr pkt, ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
         Fault fault = NoFault;
@@ -270,7 +163,7 @@ def template LoadCompleteAcc {{
 
 def template StoreExecute {{
     Fault
-    %(class_name)s::execute(CPU_EXEC_CONTEXT *xc,
+    %(class_name)s::execute(ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
         Addr EA;
@@ -303,7 +196,7 @@ def template StoreExecute {{
 
 def template StoreInitiateAcc {{
     Fault
-    %(class_name)s::initiateAcc(CPU_EXEC_CONTEXT *xc,
+    %(class_name)s::initiateAcc(ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
         Addr EA;
@@ -332,32 +225,24 @@ def template StoreInitiateAcc {{
 
 def template StoreCompleteAcc {{
     Fault
-    %(class_name)s::completeAcc(PacketPtr pkt, CPU_EXEC_CONTEXT *xc,
+    %(class_name)s::completeAcc(PacketPtr pkt, ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
         return NoFault;
     }
 }};
 
-def format Load(memacc_code, ea_code = {{EA = Rs1 + ldisp;}}, mem_flags=[],
-        inst_flags=[]) {{
-    offset_code = """
-                    ldisp = IMM12;
-                    if (IMMSIGN > 0)
-                        ldisp |= ~((uint64_t)0xFFF);
-                  """
+def format Load(memacc_code, ea_code = {{EA = Rs1 + offset;}},
+        offset_code={{offset = sext<12>(IMM12);}},
+        mem_flags=[], inst_flags=[]) {{
     (header_output, decoder_output, decode_block, exec_output) = \
         LoadStoreBase(name, Name, offset_code, ea_code, memacc_code, mem_flags,
         inst_flags, 'Load', exec_template_base='Load')
 }};
 
-def format Store(memacc_code, ea_code={{EA = Rs1 + sdisp;}}, mem_flags=[],
-        inst_flags=[]) {{
-    offset_code = """
-                    sdisp = IMM5 | (IMM7 << 5);
-                    if (IMMSIGN > 0)
-                        sdisp |= ~((uint64_t)0xFFF);
-                  """
+def format Store(memacc_code, ea_code={{EA = Rs1 + offset;}},
+        offset_code={{offset = sext<12>(IMM5 | (IMM7 << 5));}},
+        mem_flags=[], inst_flags=[]) {{
     (header_output, decoder_output, decode_block, exec_output) = \
         LoadStoreBase(name, Name, offset_code, ea_code, memacc_code, mem_flags,
         inst_flags, 'Store', exec_template_base='Store')

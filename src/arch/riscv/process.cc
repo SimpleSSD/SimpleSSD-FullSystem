@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -43,7 +44,8 @@
 #include "arch/riscv/isa_traits.hh"
 #include "base/loader/elf_object.hh"
 #include "base/loader/object_file.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
+#include "base/random.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Stack.hh"
 #include "mem/page_table.hh"
@@ -61,7 +63,7 @@ RiscvProcess::RiscvProcess(ProcessParams * params,
     ObjectFile *objFile) : Process(params, objFile)
 {
     const Addr stack_base = 0x7FFFFFFFFFFFFFFFL;
-    const Addr max_stack_size = PageBytes * 64;
+    const Addr max_stack_size = 8 * 1024 * 1024;
     const Addr next_thread_stack_base = stack_base - max_stack_size;
     const Addr brk_point = roundUp(objFile->bssBase() + objFile->bssSize(),
             PageBytes);
@@ -81,6 +83,8 @@ RiscvProcess::initState()
 template<class IntType> void
 RiscvProcess::argsInit(int pageSize)
 {
+    const int RandomBytes = 16;
+
     updateBias();
     objFile->loadSections(initVirtMem);
     ElfObject* elfObject = dynamic_cast<ElfObject*>(objFile);
@@ -88,7 +92,7 @@ RiscvProcess::argsInit(int pageSize)
 
     // Determine stack size and populate auxv
     Addr stack_top = memState->getStackMin();
-    stack_top -= elfObject->programHeaderSize();
+    stack_top -= RandomBytes;
     for (const string& arg: argv)
         stack_top -= arg.size() + 1;
     for (const string& env: envp)
@@ -114,15 +118,12 @@ RiscvProcess::argsInit(int pageSize)
     allocateMem(roundDown(stack_top, pageSize),
             roundUp(memState->getStackSize(), pageSize));
 
-    // Copy program headers to stack
-    memState->setStackMin(memState->getStackMin() -
-            elfObject->programHeaderSize());
-    uint8_t* phdr = new uint8_t[elfObject->programHeaderSize()];
-    initVirtMem.readBlob(elfObject->programHeaderTable(), phdr,
-            elfObject->programHeaderSize());
-    initVirtMem.writeBlob(memState->getStackMin(), phdr,
-            elfObject->programHeaderSize());
-    delete phdr;
+    // Copy random bytes (for AT_RANDOM) to stack
+    memState->setStackMin(memState->getStackMin() - RandomBytes);
+    uint8_t at_random[RandomBytes];
+    generate(begin(at_random), end(at_random),
+             [&]{ return random_mt.random(0, 0xFF); });
+    initVirtMem.writeBlob(memState->getStackMin(), at_random, RandomBytes);
 
     // Copy argv to stack
     vector<Addr> argPointers;

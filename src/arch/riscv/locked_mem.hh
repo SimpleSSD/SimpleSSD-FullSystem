@@ -51,7 +51,7 @@
 #include <stack>
 
 #include "arch/registers.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/LLSC.hh"
 #include "mem/packet.hh"
@@ -124,6 +124,13 @@ handleLockedWrite(XC *xc, Request *req, Addr cacheBlockMask)
         req->setExtraData(2);
     }
     return true;
+}
+
+template <class XC>
+inline void
+globalClearExclusive(XC *xc)
+{
+    xc->getCpuPtr()->wakeup(xc->threadId());
 }
 
 } // namespace RiscvISA

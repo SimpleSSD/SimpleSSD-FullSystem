@@ -34,7 +34,7 @@
 #include "arch/alpha/isa_traits.hh"
 #include "base/loader/elf_object.hh"
 #include "base/loader/object_file.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
 #include "mem/page_table.hh"
@@ -189,9 +189,9 @@ AlphaProcess::setupASNReg()
 
 
 void
-AlphaProcess::loadState(CheckpointIn &cp)
+AlphaProcess::unserialize(CheckpointIn &cp)
 {
-    Process::loadState(cp);
+    Process::unserialize(cp);
     // need to set up ASN after unserialization since _pid value may
     // come from checkpoint
     setupASNReg();

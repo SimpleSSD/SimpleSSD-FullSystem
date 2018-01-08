@@ -54,7 +54,7 @@ class SouthBridge(SimObject):
     _cmos = Cmos(pio_addr=x86IOAddress(0x70))
     _dma1 = I8237(pio_addr=x86IOAddress(0x0))
     _keyboard = I8042(data_port=x86IOAddress(0x60), \
-                      command_port=x86IOAddress(0x64))
+            command_port=x86IOAddress(0x64))
     _pit = I8254(pio_addr=x86IOAddress(0x40))
     _speaker = PcSpeaker(pio_addr=x86IOAddress(0x61))
     _io_apic = I82094AA(pio_addr=0xFEC00000)

@@ -50,9 +50,14 @@
 #include <iostream>
 #include <string>
 
+#if defined(__FreeBSD__)
+#include <sys/param.h>
+
+#endif
+
 #include "base/atomicio.hh"
 #include "base/cprintf.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "sim/async.hh"
 #include "sim/backtrace.hh"
 #include "sim/core.hh"
@@ -67,7 +72,11 @@ static bool
 setupAltStack()
 {
     stack_t stack;
+#if defined(__FreeBSD__) && (__FreeBSD_version < 1100097)
+    stack.ss_sp = (char *)fatalSigStack;
+#else
     stack.ss_sp = fatalSigStack;
+#endif
     stack.ss_size = sizeof(fatalSigStack);
     stack.ss_flags = 0;
 
@@ -158,15 +167,6 @@ segvHandler(int sigtype)
     raiseFatalSignal(SIGSEGV);
 }
 
-static void
-fpeHandler(int sigtype)
-{
-    STATIC_ERR("gem5 has encountered a floating point exception!\n\n");
-
-    print_backtrace();
-    raiseFatalSignal(SIGFPE);
-}
-
 // Handle SIGIO
 static void
 ioHandler(int sigtype)
@@ -206,8 +206,6 @@ initSignals()
     if (setupAltStack()) {
         installSignalHandler(SIGSEGV, segvHandler,
                              SA_RESETHAND | SA_NODEFER | SA_ONSTACK);
-        installSignalHandler(SIGFPE, fpeHandler,
-                             SA_RESETHAND | SA_NODEFER | SA_ONSTACK);
     } else {
         warn("Failed to setup stack for SIGSEGV handler, "
              "using default signal handler.\n");
@@ -217,3 +215,4 @@ initSignals()
     // PollQueue class.
     installSignalHandler(SIGIO, ioHandler);
 }
+

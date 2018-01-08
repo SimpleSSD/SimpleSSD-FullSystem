@@ -31,7 +31,7 @@
  *          Gabe Black
  */
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "config/the_isa.hh"
 #include "debug/TimeSync.hh"
@@ -119,15 +119,8 @@ Root::Root(RootParams *p)
 }
 
 void
-Root::initState()
+Root::startup()
 {
-    timeSyncEnable(params()->time_sync_enable);
-}
-
-void
-Root::loadState(CheckpointIn &cp)
-{
-    SimObject::loadState(cp);
     timeSyncEnable(params()->time_sync_enable);
 }
 
@@ -138,10 +131,6 @@ Root::serialize(CheckpointOut &cp) const
     std::string isa = THE_ISA_STR;
     SERIALIZE_SCALAR(isa);
 }
-
-void
-Root::unserialize(CheckpointIn &cp)
-{}
 
 
 bool FullSystem;

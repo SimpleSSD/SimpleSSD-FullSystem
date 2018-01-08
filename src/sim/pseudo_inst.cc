@@ -731,7 +731,9 @@ m5GetTick(ThreadContext *tc, Addr t) {
   real.tv_nsec = (tick / 1000) % 1000000000;
   real.tv_sec = (tick / 1000) / 1000000000;
 
-  CopyIn(tc, t, &real, sizeof(struct timespec));
+  if (t) {
+    CopyIn(tc, t, &real, sizeof(struct timespec));
+  }
 
   return tick;
 }

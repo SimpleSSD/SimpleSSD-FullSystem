@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012,2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -43,6 +43,8 @@
 #ifndef __BASE_COMPILER_HH__
 #define __BASE_COMPILER_HH__
 
+#include <memory>
+
 // http://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
 
 #if defined(__GNUC__) // clang or gcc
@@ -60,5 +62,43 @@
 #else
 #  define M5_CLASS_VAR_USED
 #endif
+
+// This can be removed once all compilers support C++17
+#if defined __has_cpp_attribute
+    // Note: We must separate this if statement because GCC < 5.0 doesn't
+    //       support the function-like syntax in #if statements.
+    #if __has_cpp_attribute(fallthrough)
+        #define M5_FALLTHROUGH [[fallthrough]]
+    #else
+        #define M5_FALLTHROUGH
+    #endif
+#else
+    // Unsupported (and no warning) on GCC < 7.
+    #define M5_FALLTHROUGH
+#endif
+
+// std::make_unique redefined for C++11 compilers
+namespace m5
+{
+
+#if __cplusplus == 201402L // C++14
+
+using std::make_unique;
+
+#else // C++11
+
+/** Defining custom version of make_unique: m5::make_unique<>() */
+template<typename T, typename... Args>
+std::unique_ptr<T>
+make_unique( Args&&... constructor_args )
+{
+    return std::unique_ptr<T>(
+               new T( std::forward<Args>(constructor_args)... )
+           );
+}
+
+#endif // __cplusplus == 201402L
+
+} //namespace m5
 
 #endif // __BASE_COMPILER_HH__

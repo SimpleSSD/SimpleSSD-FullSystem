@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2014, 2016 ARM Limited
+ * Copyright (c) 2010, 2012-2014, 2016-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -278,10 +278,10 @@ template<> ArmFault::FaultVals ArmFaultVals<SystemError>::vals = {
     "SError",                0x000, 0x180, 0x380, 0x580, 0x780, MODE_SVC,
     0, 0, 0, 0, false, true,  true,  EC_SERROR, FaultStat()
 };
-template<> ArmFault::FaultVals ArmFaultVals<FlushPipe>::vals = {
-    // Some dummy values
-    "Pipe Flush",            0x000, 0x000, 0x000, 0x000, 0x000, MODE_SVC,
-    0, 0, 0, 0, false, true,  true,  EC_UNKNOWN, FaultStat()
+template<> ArmFault::FaultVals ArmFaultVals<SoftwareBreakpoint>::vals = {
+    // Some dummy values (SoftwareBreakpoint is AArch64-only)
+    "Software Breakpoint",   0x000, 0x000, 0x200, 0x400, 0x600, MODE_SVC,
+    0, 0, 0, 0, true, false, false,  EC_SOFTWARE_BREAKPOINT, FaultStat()
 };
 template<> ArmFault::FaultVals ArmFaultVals<ArmSev>::vals = {
     // Some dummy values
@@ -391,6 +391,7 @@ ArmFault::setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg)
     uint32_t value;
     uint32_t exc_class = (uint32_t) ec(tc);
     uint32_t issVal = iss();
+
     assert(!from64 || ArmSystem::highestELIs64(tc));
 
     value = exc_class << 26;
@@ -438,12 +439,15 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
             from64 = true;
 
         // Determine target exception level
-        if (ArmSystem::haveSecurity(tc) && routeToMonitor(tc))
+        if (ArmSystem::haveSecurity(tc) && routeToMonitor(tc)) {
             toEL = EL3;
-        else if (ArmSystem::haveVirtualization(tc) && routeToHyp(tc))
+        } else if (ArmSystem::haveVirtualization(tc) && routeToHyp(tc)) {
             toEL = EL2;
-        else
+            hypRouted = true;
+        } else {
             toEL = opModeToEL(nextMode());
+        }
+
         if (fromEL > toEL)
             toEL = fromEL;
 
@@ -482,16 +486,18 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     // extra information. This is used to generate the correct fault syndrome
     // information
     if (inst) {
-        ArmStaticInst *armInst = reinterpret_cast<ArmStaticInst *>(inst.get());
+        ArmStaticInst *armInst = static_cast<ArmStaticInst *>(inst.get());
         armInst->annotateFault(this);
     }
 
-    if (have_security && routeToMonitor(tc))
+    if (have_security && routeToMonitor(tc)) {
         cpsr.mode = MODE_MON;
-    else if (have_virtualization && routeToHyp(tc))
+    } else if (have_virtualization && routeToHyp(tc)) {
         cpsr.mode = MODE_HYP;
-    else
+        hypRouted = true;
+    } else {
         cpsr.mode = nextMode();
+    }
 
     // Ensure Secure state if initially in Monitor mode
     if (have_security && saved_cpsr.mode == MODE_MON) {
@@ -672,7 +678,7 @@ ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
     // extra information. This is used to generate the correct fault syndrome
     // information
     if (inst)
-        reinterpret_cast<ArmStaticInst *>(inst.get())->annotateFault(this);
+        static_cast<ArmStaticInst *>(inst.get())->annotateFault(this);
     // Save exception syndrome
     if ((nextMode() != MODE_IRQ) && (nextMode() != MODE_FIQ))
         setSyndrome(tc, getSyndromeReg64());
@@ -747,6 +753,12 @@ UndefinedInstruction::routeToHyp(ThreadContext *tc) const
 uint32_t
 UndefinedInstruction::iss() const
 {
+
+    // If UndefinedInstruction is routed to hypervisor, iss field is 0.
+    if (hypRouted) {
+        return 0;
+    }
+
     if (overrideEc == EC_INVALID)
         return issRaw;
 
@@ -836,7 +848,12 @@ SecureMonitorCall::iss() const
 ExceptionClass
 UndefinedInstruction::ec(ThreadContext *tc) const
 {
-    return (overrideEc != EC_INVALID) ? overrideEc : vals.ec;
+    // If UndefinedInstruction is routed to hypervisor,
+    // HSR.EC field is 0.
+    if (hypRouted)
+        return EC_UNKNOWN;
+    else
+        return (overrideEc != EC_INVALID) ? overrideEc : vals.ec;
 }
 
 
@@ -1398,17 +1415,23 @@ SystemError::routeToHyp(ThreadContext *tc) const
     return toHyp;
 }
 
-void
-FlushPipe::invoke(ThreadContext *tc, const StaticInstPtr &inst) {
-    DPRINTF(Faults, "Invoking FlushPipe Fault\n");
 
-    // Set the PC to the next instruction of the faulting instruction.
-    // Net effect is simply squashing all instructions behind and
-    // start refetching from the next instruction.
-    PCState pc = tc->pcState();
-    assert(inst);
-    inst->advancePC(pc);
-    tc->pcState(pc);
+SoftwareBreakpoint::SoftwareBreakpoint(ExtMachInst _mach_inst, uint32_t _iss)
+    : ArmFaultVals<SoftwareBreakpoint>(_mach_inst, _iss)
+{}
+
+bool
+SoftwareBreakpoint::routeToHyp(ThreadContext *tc) const
+{
+    assert(from64);
+
+    const bool have_el2 = ArmSystem::haveVirtualization(tc);
+
+    const HCR hcr  = tc->readMiscRegNoEffect(MISCREG_HCR_EL2);
+    const HDCR mdcr  = tc->readMiscRegNoEffect(MISCREG_MDCR_EL2);
+
+    return have_el2 && !inSecureState(tc) && fromEL <= EL1 &&
+        (hcr.tge || mdcr.tde);
 }
 
 void
@@ -1443,7 +1466,7 @@ template class ArmFaultVals<SecureMonitorTrap>;
 template class ArmFaultVals<PCAlignmentFault>;
 template class ArmFaultVals<SPAlignmentFault>;
 template class ArmFaultVals<SystemError>;
-template class ArmFaultVals<FlushPipe>;
+template class ArmFaultVals<SoftwareBreakpoint>;
 template class ArmFaultVals<ArmSev>;
 template class AbortFault<PrefetchAbort>;
 template class AbortFault<DataAbort>;

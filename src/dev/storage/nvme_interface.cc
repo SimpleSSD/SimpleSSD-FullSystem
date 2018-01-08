@@ -23,6 +23,7 @@
 #include "debug/NVMeInterrupt.hh"
 #include "dev/storage/simplessd/hil/nvme/controller.hh"
 #include "dev/storage/simplessd/hil/nvme/def.hh"
+#include "dev/storage/simplessd/util/algorithm.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
@@ -33,10 +34,34 @@
 #include "dev/storage/simplessd/log/log.hh"
 #include "dev/storage/simplessd/log/trace.hh"
 
+// TODO: move this code to SimpleSSD
+namespace PCIExpress {
+
+enum GEN : int { PCIE_1, PCIE_2, PCIE_3 };
+
+static const int nGen = 3;
+static const uint32_t maxPayloadSize = 4096;
+static const uint32_t tlpOverhead = 28;
+static const uint32_t dllpOverhead = 16;
+static const float encoding[nGen] = {1.2f, 1.2f, 1.015625f};
+static const float delay[nGen] = {3200.f, 1600.f, 1000.f};
+
+uint64_t calcPCIeDelay(uint64_t bytesize) {
+  uint64_t nTLP = MAX((bytesize - 1) / maxPayloadSize + 1, 1);
+  uint64_t nSymbol;
+
+  nSymbol = bytesize + nTLP * (tlpOverhead + dllpOverhead);
+  nSymbol = (nSymbol - 1) / PCIE_LANE + 2;
+
+  return (uint64_t)(delay[PCIE_GEN] * encoding[PCIE_GEN] * nSymbol + 0.5f);
+}
+
+} // namespace PCIExpress
+
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p), configPath(p->SSDConfig), periodWork(0), periodQueue(0),
-      psPerByte(DMA_DELAY), lastReadDMAEndAt(0), lastWriteDMAEndAt(0), IS(0),
-      ISold(0), mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
+      lastReadDMAEndAt(0), lastWriteDMAEndAt(0), IS(0), ISold(0),
+      mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
   SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
                                    []() -> uint64_t { return curTick(); });
 
@@ -313,7 +338,7 @@ void NVMeInterface::writeInterrupt(Addr addr, size_t size, uint8_t *data) {
 
 uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
                                 uint64_t &tick) {
-  uint64_t latency = (uint64_t)(psPerByte * size + 0.5);
+  uint64_t latency = PCIExpress::calcPCIeDelay(size);
   uint64_t delay = 0;
 
   // DMA Scheduling
@@ -340,7 +365,7 @@ uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
 
 uint64_t NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
                                  uint64_t &tick) {
-  uint64_t latency = (uint64_t)(psPerByte * size + 0.5);
+  uint64_t latency = PCIExpress::calcPCIeDelay(size);
   uint64_t delay = 0;
 
   // DMA Scheduling
