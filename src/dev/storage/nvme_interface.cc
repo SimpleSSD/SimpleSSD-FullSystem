@@ -40,18 +40,37 @@ namespace PCIExpress {
 enum GEN : int { PCIE_1, PCIE_2, PCIE_3 };
 
 static const int nGen = 3;
-static const uint32_t maxPayloadSize = 4096;
-static const uint32_t tlpOverhead = 28;
-static const uint32_t dllpOverhead = 16;
-static const float encoding[nGen] = {1.2f, 1.2f, 1.015625f};
-static const float delay[nGen] = {3200.f, 1600.f, 1000.f};
+static const uint32_t maxPayloadSize = 4096;                   // Bytes
+static const uint32_t packetOverhead = 36;                     // Bytes
+static const uint32_t internalDelay[nGen] = {19, 70, 115};     // Symbol
+static const float encoding[nGen] = {1.25f, 1.25f, 1.015625f}; // Ratio
+static const uint32_t delay[nGen] = {3200, 1600, 1000};        // pico-second
+
+// PCI Express packet
+// Physical Layer
+// 2  STP
+// Data Link Layer
+// 2  TLP Sequence Number
+// Translation Layer
+// 16 TLP Header
+// N  TLP Data payload
+// 4  ECRC
+// End of Translation Layer
+// 4  LCRC
+// End of Data Link Layer
+// 2  SDP
+// Data Link Layer
+// 4  DLLP Header
+// 2  CRC
+// End of Data Link Layer
+// M  IDL
 
 uint64_t calcPCIeDelay(uint64_t bytesize) {
   uint64_t nTLP = MAX((bytesize - 1) / maxPayloadSize + 1, 1);
   uint64_t nSymbol;
 
-  nSymbol = bytesize + nTLP * (tlpOverhead + dllpOverhead);
-  nSymbol = (nSymbol - 1) / PCIE_LANE + 2;
+  nSymbol = bytesize + nTLP * (packetOverhead);
+  nSymbol = (nSymbol - 1) / PCIE_LANE + 2 + internalDelay[PCIE_GEN];
 
   return (uint64_t)(delay[PCIE_GEN] * encoding[PCIE_GEN] * nSymbol + 0.5f);
 }
