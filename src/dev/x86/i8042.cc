@@ -382,6 +382,8 @@ X86ISA::I8042::write(PacketPtr pkt)
                     "mouse output buffer\" command.\n", data);
             writeData(data, true);
             break;
+          case WriteOutputPort:
+            break;
           default:
             panic("Data written for unrecognized "
                     "command %#02x\n", lastCommand);
