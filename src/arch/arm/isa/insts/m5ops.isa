@@ -585,8 +585,23 @@ let {{
                       X0
                     );'''
 
+
+    m5tickCode = '''
+                    PseudoInst::m5GetTick(
+                      xc->tcBase(),
+                      join32to64(R1, R0)
+                    );'''
+
     m5tickIop = InstObjParams("m5tick", "M5tick64", "PredOp",
                               { "code": m5tickCode64,
+                                "predicate_test": predicateTest },
+                                ["IsNonSpeculative"])
+    header_output += BasicDeclare.subst(m5tickIop)
+    decoder_output += BasicConstructor.subst(m5tickIop)
+    exec_output += PredOpExecute.subst(m5tickIop)
+
+    m5tickIop = InstObjParams("m5tick", "M5tick", "PredOp",
+                              { "code": m5tickCode,
                                 "predicate_test": predicateTest },
                                 ["IsNonSpeculative"])
     header_output += BasicDeclare.subst(m5tickIop)
@@ -600,8 +615,23 @@ let {{
                       X1
                     );'''
 
+    m5printCode = '''
+                    PseudoInst::m5print(
+                      xc->tcBase(),
+                      join32to64(R1, R0),
+                      join32to64(R3, R2)
+                    );'''
+
     m5printIop = InstObjParams("m5print", "M5print64", "PredOp",
                               { "code": m5printCode64,
+                                "predicate_test": predicateTest },
+                                ["IsNonSpeculative"])
+    header_output += BasicDeclare.subst(m5printIop)
+    decoder_output += BasicConstructor.subst(m5printIop)
+    exec_output += PredOpExecute.subst(m5printIop)
+
+    m5printIop = InstObjParams("m5print", "M5print", "PredOp",
+                              { "code": m5printCode,
                                 "predicate_test": predicateTest },
                                 ["IsNonSpeculative"])
     header_output += BasicDeclare.subst(m5printIop)

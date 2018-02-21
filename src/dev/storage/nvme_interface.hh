@@ -34,9 +34,6 @@ typedef enum _INTERRUPT_MODE {
   INTERRUPT_MSIX
 } INTERRUPT_MODE;
 
-#define PCIE_GEN PCIE_2
-#define PCIE_LANE 4
-
 class NVMeInterface : public PciDevice, public SimpleSSD::HIL::NVMe::Interface {
 private:
   std::string configPath;
@@ -46,7 +43,6 @@ private:
   int register_size;
 
   Tick periodWork;
-  Tick periodQueue;
 
   // DMA scheduling
   uint64_t lastReadDMAEndAt;
@@ -91,11 +87,8 @@ public:
   uint64_t dmaWrite(uint64_t, uint64_t, uint8_t *, uint64_t &) override;
   void updateInterrupt(uint16_t, bool) override;
   void getVendorID(uint16_t &, uint16_t &) override;
-  void enableController(Tick, Tick) override;
+  void enableController(Tick) override;
   void disableController() override;
-  void doQueue();
-  friend class EventWrapper<NVMeInterface, &NVMeInterface::doQueue>;
-  EventWrapper<NVMeInterface, &NVMeInterface::doQueue> queueEvent;
   void doWork();
   friend class EventWrapper<NVMeInterface, &NVMeInterface::doWork>;
   EventWrapper<NVMeInterface, &NVMeInterface::doWork> workEvent;

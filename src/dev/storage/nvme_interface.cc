@@ -33,54 +33,12 @@
 
 #include "dev/storage/simplessd/log/log.hh"
 #include "dev/storage/simplessd/log/trace.hh"
-
-// TODO: move this code to SimpleSSD
-namespace PCIExpress {
-
-enum GEN : int { PCIE_1, PCIE_2, PCIE_3 };
-
-static const int nGen = 3;
-static const uint32_t maxPayloadSize = 4096;                   // Bytes
-static const uint32_t packetOverhead = 36;                     // Bytes
-static const uint32_t internalDelay[nGen] = {19, 70, 115};     // Symbol
-static const float encoding[nGen] = {1.25f, 1.25f, 1.015625f}; // Ratio
-static const uint32_t delay[nGen] = {3200, 1600, 1000};        // pico-second
-
-// PCI Express packet
-// Physical Layer
-// 2  STP
-// Data Link Layer
-// 2  TLP Sequence Number
-// Translation Layer
-// 16 TLP Header
-// N  TLP Data payload
-// 4  ECRC
-// End of Translation Layer
-// 4  LCRC
-// End of Data Link Layer
-// 2  SDP
-// Data Link Layer
-// 4  DLLP Header
-// 2  CRC
-// End of Data Link Layer
-// M  IDL
-
-uint64_t calcPCIeDelay(uint64_t bytesize) {
-  uint64_t nTLP = MAX((bytesize - 1) / maxPayloadSize + 1, 1);
-  uint64_t nSymbol;
-
-  nSymbol = bytesize + nTLP * (packetOverhead);
-  nSymbol = (nSymbol - 1) / PCIE_LANE + 2 + internalDelay[PCIE_GEN];
-
-  return (uint64_t)(delay[PCIE_GEN] * encoding[PCIE_GEN] * nSymbol + 0.5f);
-}
-
-} // namespace PCIExpress
+#include "dev/storage/simplessd/util/interface.hh"
 
 NVMeInterface::NVMeInterface(Params *p)
-    : PciDevice(p), configPath(p->SSDConfig), periodWork(0), periodQueue(0),
+    : PciDevice(p), configPath(p->SSDConfig), periodWork(0),
       lastReadDMAEndAt(0), lastWriteDMAEndAt(0), IS(0), ISold(0),
-      mode(INTERRUPT_PIN), queueEvent(this), workEvent(this) {
+      mode(INTERRUPT_PIN), workEvent(this) {
   SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
                                    []() -> uint64_t { return curTick(); });
 
@@ -357,7 +315,8 @@ void NVMeInterface::writeInterrupt(Addr addr, size_t size, uint8_t *data) {
 
 uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
                                 uint64_t &tick) {
-  uint64_t latency = PCIExpress::calcPCIeDelay(size);
+  uint64_t latency = SimpleSSD::PCIExpress::calculateDelay(
+      SimpleSSD::PCIExpress::PCIE_2_X, 4, size);
   uint64_t delay = 0;
 
   // DMA Scheduling
@@ -384,7 +343,8 @@ uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
 
 uint64_t NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
                                  uint64_t &tick) {
-  uint64_t latency = PCIExpress::calcPCIeDelay(size);
+  uint64_t latency = SimpleSSD::PCIExpress::calculateDelay(
+      SimpleSSD::PCIExpress::PCIE_2_X, 4, size);
   uint64_t delay = 0;
 
   // DMA Scheduling
@@ -486,26 +446,13 @@ void NVMeInterface::doWork() {
   schedule(workEvent, handling + periodWork);
 }
 
-void NVMeInterface::doQueue() {
-  Tick handling = curTick();
-
-  pController->collectSQueue(handling);
-
-  schedule(queueEvent, handling + periodQueue);
-}
-
-void NVMeInterface::enableController(Tick q, Tick w) {
-  periodQueue = q;
+void NVMeInterface::enableController(Tick w) {
   periodWork = w;
 
-  schedule(queueEvent, curTick() + periodQueue);
   schedule(workEvent, curTick() + periodWork);
 }
 
 void NVMeInterface::disableController() {
-  if (queueEvent.scheduled()) {
-    deschedule(queueEvent);
-  }
   if (workEvent.scheduled()) {
     deschedule(workEvent);
   }
