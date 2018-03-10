@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2014, 2016 ARM Limited
+ * Copyright (c) 2009-2014, 2016-2018 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -184,6 +184,13 @@ inSecureState(ThreadContext *tc)
         scr, tc->readMiscReg(MISCREG_CPSR));
 }
 
+inline bool
+isSecureBelowEL3(ThreadContext *tc)
+{
+    SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
+    return ArmSystem::haveEL(tc, EL3) && scr.ns == 0;
+}
+
 bool
 inAArch64(ThreadContext *tc)
 {
@@ -230,34 +237,61 @@ getMPIDR(ArmSystem *arm_sys, ThreadContext *tc)
 bool
 ELIs64(ThreadContext *tc, ExceptionLevel el)
 {
-    if (ArmSystem::highestEL(tc) == el)
-        // Register width is hard-wired
-        return ArmSystem::highestELIs64(tc);
+    return !ELIs32(tc, el);
+}
 
-    switch (el) {
-      case EL0:
-        return opModeIs64(currOpMode(tc));
-      case EL1:
-        {
-            if (ArmSystem::haveVirtualization(tc)) {
-                HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-                return hcr.rw;
-            } else if (ArmSystem::haveSecurity(tc)) {
-                SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
-                return scr.rw;
-            }
-            panic("must haveSecurity(tc)");
+bool
+ELIs32(ThreadContext *tc, ExceptionLevel el)
+{
+    bool known, aarch32;
+    std::tie(known, aarch32) = ELUsingAArch32K(tc, el);
+    panic_if(!known, "EL state is UNKNOWN");
+    return aarch32;
+}
+
+std::pair<bool, bool>
+ELUsingAArch32K(ThreadContext *tc, ExceptionLevel el)
+{
+    // Return true if the specified EL is in aarch32 state.
+    const bool have_el3 = ArmSystem::haveSecurity(tc);
+    const bool have_el2 = ArmSystem::haveVirtualization(tc);
+
+    panic_if(el == EL2 && !have_el2, "Asking for EL2 when it doesn't exist");
+    panic_if(el == EL3 && !have_el3, "Asking for EL3 when it doesn't exist");
+
+    bool known, aarch32;
+    known = aarch32 = false;
+    if (ArmSystem::highestELIs64(tc) && ArmSystem::highestEL(tc) == el) {
+        // Target EL is the highest one in a system where
+        // the highest is using AArch64.
+        known = true; aarch32 = false;
+    } else if (!ArmSystem::highestELIs64(tc)) {
+        // All ELs are using AArch32:
+        known = true; aarch32 = true;
+    } else {
+        SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
+        bool aarch32_below_el3 = (have_el3 && scr.rw == 0);
+
+        HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
+        bool aarch32_at_el1 = (aarch32_below_el3
+                               || (have_el2
+                               && !isSecureBelowEL3(tc) && hcr.rw == 0));
+
+        // Only know if EL0 using AArch32 from PSTATE
+        if (el == EL0 && !aarch32_at_el1) {
+            // EL0 controlled by PSTATE
+            CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
+
+            known = (cpsr.el == EL0);
+            aarch32 = (cpsr.width == 1);
+        } else {
+            known = true;
+            aarch32 = (aarch32_below_el3 && el != EL3)
+                      || (aarch32_at_el1 && (el == EL0 || el == EL1) );
         }
-      case EL2:
-        {
-            assert(ArmSystem::haveSecurity(tc));
-            SCR scr = tc->readMiscReg(MISCREG_SCR_EL3);
-            return scr.rw;
-        }
-      default:
-        panic("Invalid exception level");
-        break;
     }
+
+    return std::make_pair(known, aarch32);
 }
 
 bool

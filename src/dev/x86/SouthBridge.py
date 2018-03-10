@@ -87,7 +87,7 @@ class SouthBridge(SimObject):
     ide.InterruptPin = 1
     ide.LegacyIOBase = x86IOAddress(0)
 
-    # NVMe controller
+    # NVMe Interface
     nvme = NVMeInterface(pci_func=0, pci_dev=5, pci_bus=0)
 
     def attachIO(self, bus, dma_ports):
@@ -112,9 +112,9 @@ class SouthBridge(SimObject):
         self.ide.pio = bus.master
         self.nvme.pio = bus.master
         if dma_ports.count(self.ide.dma) == 0:
-            self.ide.dma = bus.slave
+                self.ide.dma = bus.slave
         if dma_ports.count(self.nvme.dma) == 0:
-            self.nvme.dma = bus.slave
+                self.nvme.dma = bus.slave
         self.keyboard.pio = bus.master
         self.pic1.pio = bus.master
         self.pic2.pio = bus.master

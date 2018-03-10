@@ -22,7 +22,7 @@ from PciDevice import PciDevice
 class NVMeInterface(PciDevice):
     type = 'NVMeInterface'
     cxx_header = "dev/storage/nvme_interface.hh"
-    SSDConfig = Param.String('./config.cfg', "SimpleSSD Configuration File")
+    SSDConfig = Param.String('', "Path to SimpleSSD configuration file.")
 
     # NAME                      # START DESC
     # PCIe Header

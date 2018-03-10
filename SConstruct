@@ -299,9 +299,6 @@ Export('extras_dir_list')
 # the ext directory should be on the #includes path
 main.Append(CPPPATH=[Dir('ext')])
 
-# SimpleSSD
-main.Append(CPPPATH=[Dir('src/dev/storage/simplessd')])
-
 # Add shared top-level headers
 main.Prepend(CPPPATH=Dir('include'))
 
@@ -355,11 +352,6 @@ if main['GCC'] or main['CLANG']:
     if sys.platform.startswith('freebsd'):
         main.Append(CCFLAGS=['-I/usr/local/include'])
         main.Append(CXXFLAGS=['-I/usr/local/include'])
-
-    # Maybe gem5 uses inttypes.h somewhere.
-    # For old compilers, macro for cinttypes not defined.
-    # So define __STDC_FORMAT_MACROS here.
-    main.Append(CXXFLAGS=['-D__STDC_FORMAT_MACROS'])
 
     main['FILTER_PSHLINKFLAGS'] = lambda x: str(x).replace(' -shared', '')
     main['PSHLINKFLAGS'] = main.subst('${FILTER_PSHLINKFLAGS(SHLINKFLAGS)}')
@@ -822,11 +814,12 @@ if not GetOption('without_tcmalloc'):
 # list will be used by default.
 backtrace_impls = [ "none" ]
 
-if conf.CheckLibWithHeader(None, 'execinfo.h', 'C',
-                           'backtrace_symbols_fd((void*)1, 0, 0);'):
+backtrace_checker = 'char temp;' + \
+    ' backtrace_symbols_fd((void*)&temp, 0, 0);'
+if conf.CheckLibWithHeader(None, 'execinfo.h', 'C', backtrace_checker):
     backtrace_impls.append("glibc")
 elif conf.CheckLibWithHeader('execinfo', 'execinfo.h', 'C',
-                           'backtrace_symbols_fd((void*)1, 0, 0);'):
+                             backtrace_checker):
     # NetBSD and FreeBSD need libexecinfo.
     backtrace_impls.append("glibc")
     main.Append(LIBS=['execinfo'])

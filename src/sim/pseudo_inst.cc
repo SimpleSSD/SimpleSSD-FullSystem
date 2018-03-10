@@ -47,7 +47,6 @@
 #include <unistd.h>
 
 #include <cerrno>
-#include <ctime>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -199,14 +198,14 @@ pseudoInst(ThreadContext *tc, uint8_t func, uint8_t subfunc)
         workend(tc, args[0], args[1]);
         break;
 
-      case M5OP_ANNOTATE:
       case M5OP_GET_TICK:
-        return m5GetTick(tc, args[0]);
+        return getTick(tc, args[0]);
 
       case M5OP_PRINT:
-        m5print(tc, args[0], args[1]);
+        print(tc, args[0], args[1]);
         break;
 
+      case M5OP_ANNOTATE:
       case M5OP_RESERVED4:
       case M5OP_RESERVED5:
         warn("Unimplemented m5 op (0x%x)\n", func);
@@ -724,7 +723,7 @@ workend(ThreadContext *tc, uint64_t workid, uint64_t threadid)
 }
 
 uint64_t
-m5GetTick(ThreadContext *tc, Addr t) {
+getTick(ThreadContext *tc, Addr t) {
   struct timespec real;
 
   uint64_t tick = curTick();
@@ -739,11 +738,13 @@ m5GetTick(ThreadContext *tc, Addr t) {
 }
 
 void
-m5print(ThreadContext *tc, Addr str, uint64_t len) {
+print(ThreadContext *tc, Addr str, uint64_t len) {
   char *buf = (char *)calloc(len + 1, 1);
 
-  CopyOut(tc, buf, str, len);
-  DPRINTF(M5Print, "Log from guest: %s\n", buf);
+  if (str) {
+    CopyOut(tc, buf, str, len);
+    DPRINTF(M5Print, "Log from guest: %s\n", buf);
+  }
 
   free(buf);
 }

@@ -35,6 +35,11 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
+/**
+ * Note: For details on the implementation see
+ * https://wiki.osdev.org/%228042%22_PS/2_Controller
+ */
+
 // The 8042 has a whopping 32 bytes of internal RAM.
 const uint8_t RamSize = 32;
 const uint8_t NumOutputBits = 14;
@@ -382,6 +387,17 @@ X86ISA::I8042::write(PacketPtr pkt)
                     "mouse output buffer\" command.\n", data);
             writeData(data, true);
             break;
+          case WriteKeyboardOutputBuff:
+            DPRINTF(I8042, "Got data %#02x for \"Write "
+                    "keyboad output buffer\" command.\n", data);
+            writeData(data, false);
+            break;
+          case WriteOutputPort:
+            DPRINTF(I8042, "Got data %#02x for \"Write "
+                    "output port\" command.\n", data);
+            panic_if(bits(data, 0) != 1, "Reset bit should be 1");
+            // Safe to ignore otherwise
+            break;
           case WriteOutputPort:
             break;
           default:
@@ -455,12 +471,9 @@ X86ISA::I8042::write(PacketPtr pkt)
           case ReadOutputPort:
             panic("i8042 \"Read output port\" command not implemented.\n");
           case WriteOutputPort:
-            warn("i8042 \"Write output port\" command not implemented.\n");
             lastCommand = WriteOutputPort;
             break;
           case WriteKeyboardOutputBuff:
-            warn("i8042 \"Write keyboard output buffer\" "
-                    "command not implemented.\n");
             lastCommand = WriteKeyboardOutputBuff;
             break;
           case WriteMouseOutputBuff:
@@ -493,13 +506,10 @@ X86ISA::I8042::write(PacketPtr pkt)
 void
 X86ISA::I8042::serialize(CheckpointOut &cp) const
 {
-    uint8_t statusRegData = statusReg.__data;
-    uint8_t commandByteData = commandByte.__data;
-
     SERIALIZE_SCALAR(dataPort);
     SERIALIZE_SCALAR(commandPort);
-    SERIALIZE_SCALAR(statusRegData);
-    SERIALIZE_SCALAR(commandByteData);
+    SERIALIZE_SCALAR(statusReg);
+    SERIALIZE_SCALAR(commandByte);
     SERIALIZE_SCALAR(dataReg);
     SERIALIZE_SCALAR(lastCommand);
     mouse.serialize("mouse", cp);
@@ -509,20 +519,14 @@ X86ISA::I8042::serialize(CheckpointOut &cp) const
 void
 X86ISA::I8042::unserialize(CheckpointIn &cp)
 {
-    uint8_t statusRegData;
-    uint8_t commandByteData;
-
     UNSERIALIZE_SCALAR(dataPort);
     UNSERIALIZE_SCALAR(commandPort);
-    UNSERIALIZE_SCALAR(statusRegData);
-    UNSERIALIZE_SCALAR(commandByteData);
+    UNSERIALIZE_SCALAR(statusReg);
+    UNSERIALIZE_SCALAR(commandByte);
     UNSERIALIZE_SCALAR(dataReg);
     UNSERIALIZE_SCALAR(lastCommand);
     mouse.unserialize("mouse", cp);
     keyboard.unserialize("keyboard", cp);
-
-    statusReg.__data = statusRegData;
-    commandByte.__data = commandByteData;
 }
 
 void

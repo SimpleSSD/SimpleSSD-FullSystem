@@ -55,163 +55,12 @@
 namespace ArmISA
 {
 
-
-/**
- * Some registers alias with others, and therefore need to be translated.
- * For each entry:
- * The first value is the misc register that is to be looked up
- * the second value is the lower part of the translation
- * the third the upper part
- * aligned with reference documentation ARM DDI 0487A.i pp 1540-1543
- */
-const struct ISA::MiscRegInitializerEntry
-    ISA::MiscRegSwitch[] = {
-    {MISCREG_ACTLR_EL1, {MISCREG_ACTLR_NS, 0}},
-    {MISCREG_AFSR0_EL1, {MISCREG_ADFSR_NS, 0}},
-    {MISCREG_AFSR1_EL1, {MISCREG_AIFSR_NS, 0}},
-    {MISCREG_AMAIR_EL1, {MISCREG_AMAIR0_NS, MISCREG_AMAIR1_NS}},
-    {MISCREG_CONTEXTIDR_EL1, {MISCREG_CONTEXTIDR_NS, 0}},
-    {MISCREG_CPACR_EL1, {MISCREG_CPACR, 0}},
-    {MISCREG_CSSELR_EL1, {MISCREG_CSSELR_NS, 0}},
-    {MISCREG_DACR32_EL2, {MISCREG_DACR_NS, 0}},
-    {MISCREG_FAR_EL1, {MISCREG_DFAR_NS, MISCREG_IFAR_NS}},
-    // ESR_EL1 -> DFSR
-    {MISCREG_HACR_EL2, {MISCREG_HACR, 0}},
-    {MISCREG_ACTLR_EL2, {MISCREG_HACTLR, 0}},
-    {MISCREG_AFSR0_EL2, {MISCREG_HADFSR, 0}},
-    {MISCREG_AFSR1_EL2, {MISCREG_HAIFSR, 0}},
-    {MISCREG_AMAIR_EL2, {MISCREG_HAMAIR0, MISCREG_HAMAIR1}},
-    {MISCREG_CPTR_EL2, {MISCREG_HCPTR, 0}},
-    {MISCREG_HCR_EL2, {MISCREG_HCR, 0 /*MISCREG_HCR2*/}},
-    {MISCREG_MDCR_EL2, {MISCREG_HDCR, 0}},
-    {MISCREG_FAR_EL2, {MISCREG_HDFAR, MISCREG_HIFAR}},
-    {MISCREG_MAIR_EL2, {MISCREG_HMAIR0, MISCREG_HMAIR1}},
-    {MISCREG_HPFAR_EL2, {MISCREG_HPFAR, 0}},
-    {MISCREG_SCTLR_EL2, {MISCREG_HSCTLR, 0}},
-    {MISCREG_ESR_EL2, {MISCREG_HSR, 0}},
-    {MISCREG_HSTR_EL2, {MISCREG_HSTR, 0}},
-    {MISCREG_TCR_EL2, {MISCREG_HTCR, 0}},
-    {MISCREG_TPIDR_EL2, {MISCREG_HTPIDR, 0}},
-    {MISCREG_TTBR0_EL2, {MISCREG_HTTBR, 0}},
-    {MISCREG_VBAR_EL2, {MISCREG_HVBAR, 0}},
-    {MISCREG_IFSR32_EL2, {MISCREG_IFSR_NS, 0}},
-    {MISCREG_MAIR_EL1, {MISCREG_PRRR_NS, MISCREG_NMRR_NS}},
-    {MISCREG_PAR_EL1, {MISCREG_PAR_NS, 0}},
-    // RMR_EL1 -> RMR
-    // RMR_EL2 -> HRMR
-    {MISCREG_SCTLR_EL1, {MISCREG_SCTLR_NS, 0}},
-    {MISCREG_SDER32_EL3, {MISCREG_SDER, 0}},
-    {MISCREG_TPIDR_EL1, {MISCREG_TPIDRPRW_NS, 0}},
-    {MISCREG_TPIDRRO_EL0, {MISCREG_TPIDRURO_NS, 0}},
-    {MISCREG_TPIDR_EL0, {MISCREG_TPIDRURW_NS, 0}},
-    {MISCREG_TCR_EL1, {MISCREG_TTBCR_NS, 0}},
-    {MISCREG_TTBR0_EL1, {MISCREG_TTBR0_NS, 0}},
-    {MISCREG_TTBR1_EL1, {MISCREG_TTBR1_NS, 0}},
-    {MISCREG_VBAR_EL1, {MISCREG_VBAR_NS, 0}},
-    {MISCREG_VMPIDR_EL2, {MISCREG_VMPIDR, 0}},
-    {MISCREG_VPIDR_EL2, {MISCREG_VPIDR, 0}},
-    {MISCREG_VTCR_EL2, {MISCREG_VTCR, 0}},
-    {MISCREG_VTTBR_EL2, {MISCREG_VTTBR, 0}},
-    {MISCREG_CNTFRQ_EL0, {MISCREG_CNTFRQ, 0}},
-    {MISCREG_CNTHCTL_EL2, {MISCREG_CNTHCTL, 0}},
-    {MISCREG_CNTHP_CTL_EL2, {MISCREG_CNTHP_CTL, 0}},
-    {MISCREG_CNTHP_CVAL_EL2, {MISCREG_CNTHP_CVAL, 0}}, /* 64b */
-    {MISCREG_CNTHP_TVAL_EL2, {MISCREG_CNTHP_TVAL, 0}},
-    {MISCREG_CNTKCTL_EL1, {MISCREG_CNTKCTL, 0}},
-    {MISCREG_CNTP_CTL_EL0, {MISCREG_CNTP_CTL_NS, 0}},
-    {MISCREG_CNTP_CVAL_EL0, {MISCREG_CNTP_CVAL_NS, 0}}, /* 64b */
-    {MISCREG_CNTP_TVAL_EL0, {MISCREG_CNTP_TVAL_NS, 0}},
-    {MISCREG_CNTPCT_EL0, {MISCREG_CNTPCT, 0}}, /* 64b */
-    {MISCREG_CNTV_CTL_EL0, {MISCREG_CNTV_CTL, 0}},
-    {MISCREG_CNTV_CVAL_EL0, {MISCREG_CNTV_CVAL, 0}}, /* 64b */
-    {MISCREG_CNTV_TVAL_EL0, {MISCREG_CNTV_TVAL, 0}},
-    {MISCREG_CNTVCT_EL0, {MISCREG_CNTVCT, 0}}, /* 64b */
-    {MISCREG_CNTVOFF_EL2, {MISCREG_CNTVOFF, 0}}, /* 64b */
-    {MISCREG_DBGAUTHSTATUS_EL1, {MISCREG_DBGAUTHSTATUS, 0}},
-    {MISCREG_DBGBCR0_EL1, {MISCREG_DBGBCR0, 0}},
-    {MISCREG_DBGBCR1_EL1, {MISCREG_DBGBCR1, 0}},
-    {MISCREG_DBGBCR2_EL1, {MISCREG_DBGBCR2, 0}},
-    {MISCREG_DBGBCR3_EL1, {MISCREG_DBGBCR3, 0}},
-    {MISCREG_DBGBCR4_EL1, {MISCREG_DBGBCR4, 0}},
-    {MISCREG_DBGBCR5_EL1, {MISCREG_DBGBCR5, 0}},
-    {MISCREG_DBGBVR0_EL1, {MISCREG_DBGBVR0, 0 /* MISCREG_DBGBXVR0 */}},
-    {MISCREG_DBGBVR1_EL1, {MISCREG_DBGBVR1, 0 /* MISCREG_DBGBXVR1 */}},
-    {MISCREG_DBGBVR2_EL1, {MISCREG_DBGBVR2, 0 /* MISCREG_DBGBXVR2 */}},
-    {MISCREG_DBGBVR3_EL1, {MISCREG_DBGBVR3, 0 /* MISCREG_DBGBXVR3 */}},
-    {MISCREG_DBGBVR4_EL1, {MISCREG_DBGBVR4, MISCREG_DBGBXVR4}},
-    {MISCREG_DBGBVR5_EL1, {MISCREG_DBGBVR5, MISCREG_DBGBXVR5}},
-    {MISCREG_DBGCLAIMSET_EL1, {MISCREG_DBGCLAIMSET, 0}},
-    {MISCREG_DBGCLAIMCLR_EL1, {MISCREG_DBGCLAIMCLR, 0}},
-    // DBGDTR_EL0 -> DBGDTR{R or T}Xint
-    // DBGDTRRX_EL0 -> DBGDTRRXint
-    // DBGDTRTX_EL0 -> DBGDTRRXint
-    {MISCREG_DBGPRCR_EL1, {MISCREG_DBGPRCR, 0}},
-    {MISCREG_DBGVCR32_EL2, {MISCREG_DBGVCR, 0}},
-    {MISCREG_DBGWCR0_EL1, {MISCREG_DBGWCR0, 0}},
-    {MISCREG_DBGWCR1_EL1, {MISCREG_DBGWCR1, 0}},
-    {MISCREG_DBGWCR2_EL1, {MISCREG_DBGWCR2, 0}},
-    {MISCREG_DBGWCR3_EL1, {MISCREG_DBGWCR3, 0}},
-    {MISCREG_DBGWVR0_EL1, {MISCREG_DBGWVR0, 0}},
-    {MISCREG_DBGWVR1_EL1, {MISCREG_DBGWVR1, 0}},
-    {MISCREG_DBGWVR2_EL1, {MISCREG_DBGWVR2, 0}},
-    {MISCREG_DBGWVR3_EL1, {MISCREG_DBGWVR3, 0}},
-    {MISCREG_ID_DFR0_EL1, {MISCREG_ID_DFR0, 0}},
-    {MISCREG_MDCCSR_EL0, {MISCREG_DBGDSCRint, 0}},
-    {MISCREG_MDRAR_EL1, {MISCREG_DBGDRAR, 0}},
-    {MISCREG_MDSCR_EL1, {MISCREG_DBGDSCRext, 0}},
-    {MISCREG_OSDLR_EL1, {MISCREG_DBGOSDLR, 0}},
-    {MISCREG_OSDTRRX_EL1, {MISCREG_DBGDTRRXext, 0}},
-    {MISCREG_OSDTRTX_EL1, {MISCREG_DBGDTRTXext, 0}},
-    {MISCREG_OSECCR_EL1, {MISCREG_DBGOSECCR, 0}},
-    {MISCREG_OSLAR_EL1, {MISCREG_DBGOSLAR, 0}},
-    {MISCREG_OSLSR_EL1, {MISCREG_DBGOSLSR, 0}},
-    {MISCREG_PMCCNTR_EL0, {MISCREG_PMCCNTR, 0}},
-    {MISCREG_PMCEID0_EL0, {MISCREG_PMCEID0, 0}},
-    {MISCREG_PMCEID1_EL0, {MISCREG_PMCEID1, 0}},
-    {MISCREG_PMCNTENSET_EL0, {MISCREG_PMCNTENSET, 0}},
-    {MISCREG_PMCNTENCLR_EL0, {MISCREG_PMCNTENCLR, 0}},
-    {MISCREG_PMCR_EL0, {MISCREG_PMCR, 0}},
-/*  {MISCREG_PMEVCNTR0_EL0, {MISCREG_PMEVCNTR0, 0}},
-    {MISCREG_PMEVCNTR1_EL0, {MISCREG_PMEVCNTR1, 0}},
-    {MISCREG_PMEVCNTR2_EL0, {MISCREG_PMEVCNTR2, 0}},
-    {MISCREG_PMEVCNTR3_EL0, {MISCREG_PMEVCNTR3, 0}},
-    {MISCREG_PMEVCNTR4_EL0, {MISCREG_PMEVCNTR4, 0}},
-    {MISCREG_PMEVCNTR5_EL0, {MISCREG_PMEVCNTR5, 0}},
-    {MISCREG_PMEVTYPER0_EL0, {MISCREG_PMEVTYPER0, 0}},
-    {MISCREG_PMEVTYPER1_EL0, {MISCREG_PMEVTYPER1, 0}},
-    {MISCREG_PMEVTYPER2_EL0, {MISCREG_PMEVTYPER2, 0}},
-    {MISCREG_PMEVTYPER3_EL0, {MISCREG_PMEVTYPER3, 0}},
-    {MISCREG_PMEVTYPER4_EL0, {MISCREG_PMEVTYPER4, 0}},
-    {MISCREG_PMEVTYPER5_EL0, {MISCREG_PMEVTYPER5, 0}}, */
-    {MISCREG_PMINTENCLR_EL1, {MISCREG_PMINTENCLR, 0}},
-    {MISCREG_PMINTENSET_EL1, {MISCREG_PMINTENSET, 0}},
-//  {MISCREG_PMOVSCLR_EL0, {MISCREG_PMOVSCLR, 0}},
-    {MISCREG_PMOVSSET_EL0, {MISCREG_PMOVSSET, 0}},
-    {MISCREG_PMSELR_EL0, {MISCREG_PMSELR, 0}},
-    {MISCREG_PMSWINC_EL0, {MISCREG_PMSWINC, 0}},
-    {MISCREG_PMUSERENR_EL0, {MISCREG_PMUSERENR, 0}},
-    {MISCREG_PMXEVCNTR_EL0, {MISCREG_PMXEVCNTR, 0}},
-    {MISCREG_PMXEVTYPER_EL0, {MISCREG_PMXEVTYPER, 0}},
-
-    // from ARM DDI 0487A.i, template text
-    // "AArch64 System register ___ can be mapped to
-    //  AArch32 System register ___, but this is not
-    //  architecturally mandated."
-    {MISCREG_SCR_EL3, {MISCREG_SCR, 0}}, // D7-2005
-    // MDCR_EL3 -> SDCR, D7-2108 (the latter is unimpl. in gem5)
-    {MISCREG_SPSR_EL1, {MISCREG_SPSR_SVC, 0}}, // C5.2.17 SPSR_EL1
-    {MISCREG_SPSR_EL2, {MISCREG_SPSR_HYP, 0}}, // C5.2.18 SPSR_EL2
-    {MISCREG_SPSR_EL3, {MISCREG_SPSR_MON, 0}}, // C5.2.19 SPSR_EL3
-};
-
-
 ISA::ISA(Params *p)
     : SimObject(p),
       system(NULL),
       _decoderFlavour(p->decoderFlavour),
       _vecRegRenameMode(p->vecRegRenameMode),
-      pmu(p->pmu),
-      lookUpMiscReg(NUM_MISCREGS, {0,0})
+      pmu(p->pmu)
 {
     miscRegs[MISCREG_SCTLR_RST] = 0;
 
@@ -241,15 +90,13 @@ ISA::ISA(Params *p)
         physAddrRange64 = 32;  // dummy value
     }
 
-    /** Fill in the miscReg translation table */
-    for (auto sw : MiscRegSwitch) {
-        lookUpMiscReg[sw.index] = sw.entry;
-    }
-
+    initializeMiscRegMetadata();
     preUnflattenMiscReg();
 
     clear();
 }
+
+std::vector<struct ISA::MiscRegLUTEntry> ISA::lookUpMiscReg(NUM_MISCREGS);
 
 const ArmISAParams *
 ISA::params() const
@@ -485,10 +332,22 @@ ISA::readMiscRegNoEffect(int misc_reg) const
 {
     assert(misc_reg < NumMiscRegs);
 
-    auto regs = getMiscIndices(misc_reg);
-    int lower = regs.first, upper = regs.second;
-    return !upper ? miscRegs[lower] : ((miscRegs[lower] & mask(32))
-                                      |(miscRegs[upper] << 32));
+    const auto &reg = lookUpMiscReg[misc_reg]; // bit masks
+    const auto &map = getMiscIndices(misc_reg);
+    int lower = map.first, upper = map.second;
+    // NB!: apply architectural masks according to desired register,
+    // despite possibly getting value from different (mapped) register.
+    auto val = !upper ? miscRegs[lower] : ((miscRegs[lower] & mask(32))
+                                          |(miscRegs[upper] << 32));
+    if (val & reg.res0()) {
+        DPRINTF(MiscRegs, "Reading MiscReg %s with set res0 bits: %#x\n",
+                miscRegName[misc_reg], val & reg.res0());
+    }
+    if ((val & reg.res1()) != reg.res1()) {
+        DPRINTF(MiscRegs, "Reading MiscReg %s with clear res1 bits: %#x\n",
+                miscRegName[misc_reg], (val & reg.res1()) ^ reg.res1());
+    }
+    return (val & ~reg.raz()) | reg.rao(); // enforce raz/rao
 }
 
 
@@ -807,17 +666,20 @@ ISA::setMiscRegNoEffect(int misc_reg, const MiscReg &val)
 {
     assert(misc_reg < NumMiscRegs);
 
-    auto regs = getMiscIndices(misc_reg);
-    int lower = regs.first, upper = regs.second;
+    const auto &reg = lookUpMiscReg[misc_reg]; // bit masks
+    const auto &map = getMiscIndices(misc_reg);
+    int lower = map.first, upper = map.second;
+
+    auto v = (val & ~reg.wi()) | reg.rao();
     if (upper > 0) {
-        miscRegs[lower] = bits(val, 31, 0);
-        miscRegs[upper] = bits(val, 63, 32);
+        miscRegs[lower] = bits(v, 31, 0);
+        miscRegs[upper] = bits(v, 63, 32);
         DPRINTF(MiscRegs, "Writing to misc reg %d (%d:%d) : %#x\n",
-                misc_reg, lower, upper, val);
+                misc_reg, lower, upper, v);
     } else {
-        miscRegs[lower] = val;
+        miscRegs[lower] = v;
         DPRINTF(MiscRegs, "Writing to misc reg %d (%d) : %#x\n",
-                misc_reg, lower, val);
+                misc_reg, lower, v);
     }
 }
 
@@ -864,7 +726,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
         CPSR old_cpsr = miscRegs[MISCREG_CPSR];
         int old_mode = old_cpsr.mode;
         CPSR cpsr = val;
-        if (old_mode != cpsr.mode) {
+        if (old_mode != cpsr.mode || cpsr.il != old_cpsr.il) {
             getITBPtr(tc)->invalidateMiscReg();
             getDTBPtr(tc)->invalidateMiscReg();
         }
@@ -1614,7 +1476,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                           "MISCREG: Translated addr 0x%08x: PAR: 0x%08x\n",
                           val, newVal);
               } else {
-                  ArmFault *armFault = reinterpret_cast<ArmFault *>(fault.get());
+                  ArmFault *armFault = static_cast<ArmFault *>(fault.get());
                   // Set fault bit and FSR
                   FSR fsr = armFault->getFsr(tc);
 
@@ -1863,7 +1725,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                           "MISCREG: Translated addr %#x: PAR_EL1: %#xx\n",
                           val, newVal);
                 } else {
-                    ArmFault *armFault = reinterpret_cast<ArmFault *>(fault.get());
+                    ArmFault *armFault = static_cast<ArmFault *>(fault.get());
                     // Set fault bit and FSR
                     FSR fsr = armFault->getFsr(tc);
 

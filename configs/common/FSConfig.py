@@ -202,9 +202,10 @@ def makeSparcSystem(mem_mode, mdesc=None, cmdline=None):
 
     return self
 
-def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
+def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
                   dtb_filename=None, bare_metal=False, cmdline=None,
-                  external_memory="", ruby=False, security=False):
+                  external_memory="", ruby=False, security=False,
+                  ignore_dtb=False):
     assert machine_type
 
     default_dtbs = {
@@ -249,7 +250,7 @@ def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
     machine_type = platform_class.__name__
     self.realview = platform_class()
 
-    if not dtb_filename and not bare_metal:
+    if not dtb_filename and not (bare_metal or ignore_dtb):
         try:
             dtb_filename = default_dtbs[machine_type]
         except KeyError:
@@ -265,24 +266,31 @@ def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
     # Attach any PCI devices this platform supports
     self.realview.attachPciDevices()
 
-    self.cf0 = CowIdeDisk(driveID='master')
-    self.cf0.childImage(mdesc.disk())
-    # Old platforms have a built-in IDE or CF controller. Default to
-    # the IDE controller if both exist. New platforms expect the
-    # storage controller to be added from the config script.
-    if hasattr(self.realview, "ide"):
-        self.realview.ide.disks = [self.cf0]
-    elif hasattr(self.realview, "cf_ctrl"):
-        self.realview.cf_ctrl.disks = [self.cf0]
+    if simplessd['disable_ide']:
+        if hasattr(self.realview, "ide"):
+            delattr(self.realview, "ide")
+        elif hasattr(self.realview, "cf_ctrl"):
+            delattr(self.realview, "cf_ctrl")
     else:
-        self.pci_ide = IdeController(disks=[self.cf0])
-        pci_devices.append(self.pci_ide)
+        self.cf0 = CowIdeDisk(driveID='master')
+        self.cf0.childImage(mdesc.disk())
+        # Old platforms have a built-in IDE or CF controller. Default to
+        # the IDE controller if both exist. New platforms expect the
+        # storage controller to be added from the config script.
+        if hasattr(self.realview, "ide"):
+            self.realview.ide.disks = [self.cf0]
+        elif hasattr(self.realview, "cf_ctrl"):
+            self.realview.cf_ctrl.disks = [self.cf0]
+        else:
+            self.pci_ide = IdeController(disks=[self.cf0])
+            pci_devices.append(self.pci_ide)
 
-    if hasattr(self.realview, "nvme"):
-        self.realview.nvme.SSDConfig = SSDConfig
-    else:
-        self.pci_nvme = NVMeInterface(SSDConfig=SSDConfig)
+    if simplessd['interface'] == 'nvme':
+        self.pci_nvme = NVMeInterface(SSDConfig=simplessd['config'])
         pci_devices.append(self.pci_nvme)
+    else:
+        fatal(
+            "Undefined SimpleSSD interface {}!".format(simplessd['interface']))
 
     self.mem_ranges = []
     size_remain = long(Addr(mdesc.mem()))
@@ -311,7 +319,7 @@ def makeArmSystem(mem_mode, SSDConfig, machine_type, num_cpus=1, mdesc=None,
         if machine_type in default_kernels:
             self.kernel = binary(default_kernels[machine_type])
 
-        if dtb_filename:
+        if dtb_filename and not ignore_dtb:
             self.dtb_filename = binary(dtb_filename)
 
         self.machine_type = machine_type if machine_type in ArmMachineType.map \
@@ -486,6 +494,8 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
     #  2) the bridge to pass through the IO APIC (two pages, already contained in 1),
     #  3) everything in the IO address range up to the local APIC, and
     #  4) then the entire PCI address space and beyond.
+
+    # Address range 0xFEE00000 to 0xFEF00000 is reserved for MSI/MSI-X
     x86_sys.bridge.ranges = \
         [
         AddrRange(0xC0000000, 0xFEE00000 - 1),
@@ -498,6 +508,7 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
 
     # Create a bridge from the IO bus to the memory bus to allow access to
     # the local APIC (two pages)
+    # Forward MSI/MSI-X to membus
     x86_sys.apicbridge = Bridge(delay='50ns')
     x86_sys.apicbridge.slave = x86_sys.iobus.master
     x86_sys.apicbridge.master = x86_sys.membus.slave
@@ -522,7 +533,7 @@ def connectX86RubySystem(x86_sys):
     x86_sys.pc.attachIO(x86_sys.iobus, x86_sys._dma_ports)
 
 
-def makeX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, self=None,
+def makeX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, self=None,
                   Ruby=False):
     if self == None:
         self = X86System()
@@ -561,17 +572,24 @@ def makeX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, self=None,
 
     self.intrctrl = IntrControl()
 
-    # Disks
-    disk0 = CowIdeDisk(driveID='master')
-    # disk2 = CowIdeDisk(driveID='master')
-    disk0.childImage(mdesc.disk())
-    # disk2.childImage(disk('linux-bigswap2.img'))
-    self.pc.south_bridge.ide.disks = [disk0] # [disk0, disk2]
+    if simplessd['disable_ide']:
+        delattr(self.pc.south_bridge, 'ide')
+    else:
+        # Disks
+        disk0 = CowIdeDisk(driveID='master')
+        # disk2 = CowIdeDisk(driveID='master')
+        disk0.childImage(mdesc.disk())
+        # disk2.childImage(disk('linux-bigswap2.img'))
+        self.pc.south_bridge.ide.disks = [disk0]  # [disk0, disk2]
 
-    # NVMe
-    self.pc.south_bridge.nvme.SSDConfig = SSDConfig
-    self.pc.south_bridge.nvme.InterruptLine = 17
-    self.pc.south_bridge.nvme.InterruptPin = 1
+    if simplessd['interface'] == 'nvme':
+        self.pc.south_bridge.nvme.SSDConfig = simplessd['config']
+        self.pc.south_bridge.nvme.InterruptLine = 17
+        self.pc.south_bridge.nvme.InterruptPin = 1
+    else:
+        fatal(
+            "Undefined SimpleSSD interface {}!".format(simplessd['interface']))
+
 
     # Add in a Bios information structure.
     structures = [X86SMBiosBiosInformation()]
@@ -648,12 +666,12 @@ def makeX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, self=None,
     self.intel_mp_table.base_entries = base_entries
     self.intel_mp_table.ext_entries = ext_entries
 
-def makeLinuxX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, Ruby=False,
+def makeLinuxX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, Ruby=False,
                        cmdline=None):
     self = LinuxX86System()
 
     # Build up the x86 system and then specialize it for Linux
-    makeX86System(mem_mode, SSDConfig, numCPUs, mdesc, self, Ruby)
+    makeX86System(mem_mode, numCPUs, simplessd, mdesc, self, Ruby)
 
     # We assume below that there's at least 1MB of memory. We'll require 2
     # just to avoid corner cases.
@@ -695,7 +713,7 @@ def makeLinuxX86System(mem_mode, SSDConfig, numCPUs=1, mdesc=None, Ruby=False,
 
     # Command line
     if not cmdline:
-        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/sda1'
+        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=%(rootdev)s'
     self.boot_osflags = fillInCmdline(mdesc, cmdline)
     self.kernel = binary('x86_64-vmlinux-2.6.22.9')
     return self

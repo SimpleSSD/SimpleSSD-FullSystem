@@ -49,7 +49,7 @@ try:
     EnsureSConsVersion(0, 98)
     EnsureSConsVersion(0, 98, 1)
 except SystemExit, e:
-    print ("""
+    print("""
 For more details, see:
     http://gem5.org/Dependencies
 """)
@@ -59,7 +59,7 @@ For more details, see:
 try:
     EnsurePythonVersion(2, 7)
 except SystemExit, e:
-    print ("""
+    print("""
 You can use a non-default installation of the Python interpreter by
 rearranging your PATH so that scons finds the non-default 'python' and
 'python-config' first.

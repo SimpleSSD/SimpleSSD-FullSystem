@@ -58,8 +58,7 @@
 #include <unistd.h>
 
 #include <gem5/m5ops.h>
-
-void *m5_mem = NULL;
+#include "m5_mmap.h"
 
 char *progname;
 char *command = "unspecified";
@@ -140,7 +139,7 @@ read_file(int dest_fid)
 }
 
 void
-write_file(const char *filename)
+write_file(const char *filename, const char *host_filename)
 {
     fprintf(stderr, "opening %s\n", filename);
     int src_fid = open(filename, O_RDONLY);
@@ -158,7 +157,7 @@ write_file(const char *filename)
     memset(buf, 0, sizeof(buf));
 
     while ((len = read(src_fid, buf, sizeof(buf))) > 0) {
-        bytes += m5_write_file(buf, len, offset, filename);
+        bytes += m5_write_file(buf, len, offset, host_filename);
         offset += len;
     }
     fprintf(stderr, "written %d bytes\n", bytes);
@@ -224,12 +223,13 @@ do_read_file(int argc, char *argv[])
 void
 do_write_file(int argc, char *argv[])
 {
-    if (argc != 1)
+    if (argc != 1 && argc != 2)
         usage();
 
     const char *filename = argv[0];
+    const char *host_filename = (argc == 2) ? argv[1] : argv[0];
 
-    write_file(filename);
+    write_file(filename, host_filename);
 }
 
 void
@@ -283,11 +283,12 @@ do_get_tick(int argc, char *argv[])
 }
 
 void
-do_print(int argc, char *argv[]) {
-  if (argc != 1)
-    usage();
+do_print(int argc, char *argv[])
+{
+    if (argc != 1)
+        usage();
 
-  m5_print(argv[0], strlen(argv[0]));
+    m5_print(argv[0], strlen(argv[0]));
 }
 
 void
@@ -365,7 +366,7 @@ struct MainFunc mainfuncs[] = {
     { "dumpstats",      do_dump_stats,       "[delay [period]]" },
     { "dumpresetstats", do_dump_reset_stats, "[delay [period]]" },
     { "readfile",       do_read_file,        "" },
-    { "writefile",      do_write_file,       "<filename>" },
+    { "writefile",      do_write_file,       "<filename> [host filename]" },
     { "execfile",       do_exec_file,        "" },
     { "checkpoint",     do_checkpoint,       "[delay [period]]" },
     { "addsymbol",      do_addsymbol,        "<address> <symbol>" },
@@ -395,27 +396,6 @@ usage()
     fprintf(stderr, "All times in nanoseconds!\n");
 
     exit(1);
-}
-
-static void
-map_m5_mem()
-{
-#ifdef M5OP_ADDR
-    int fd;
-
-    fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (fd == -1) {
-        perror("Can't open /dev/mem");
-        exit(1);
-    }
-
-    m5_mem = mmap(NULL, 0x10000, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
-                  M5OP_ADDR);
-    if (!m5_mem) {
-        perror("Can't mmap /dev/mem");
-        exit(1);
-    }
-#endif
 }
 
 int

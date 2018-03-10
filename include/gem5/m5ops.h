@@ -59,16 +59,17 @@ void m5_dump_reset_stats(uint64_t ns_delay, uint64_t ns_period);
 uint64_t m5_read_file(void *buffer, uint64_t len, uint64_t offset);
 uint64_t m5_write_file(void *buffer, uint64_t len, uint64_t offset,
                        const char *filename);
-uint64_t m5_get_tick(struct timespec *tick);
-void m5_print(const char *string, uint64_t length);
 void m5_debug_break(void);
 void m5_switch_cpu(void);
 void m5_dist_toggle_sync(void);
 void m5_add_symbol(uint64_t addr, char *symbol);
-void m5_loadsymbol();
+void m5_load_symbol();
 void m5_panic(void);
 void m5_work_begin(uint64_t workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
+uint64_t m5_get_tick(struct timespec *tick);
+void m5_print(const char *string, uint64_t length);
+
 
 // These operations are for critical path annotation
 void m5a_bsm(char *sm, const void *id, int flags);

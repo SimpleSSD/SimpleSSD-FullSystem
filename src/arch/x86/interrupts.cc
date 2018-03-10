@@ -270,20 +270,6 @@ X86ISA::Interrupts::requestInterrupt(uint8_t vector,
         cpu->wakeup(0);
 }
 
-void
-X86ISA::Interrupts::getID(uint8_t &pid, uint8_t &lid, uint8_t &model) {
-  uint32_t apicID;
-  uint32_t apicLogicalDst;
-  uint32_t apicDestFormat;
-
-  apicID = readReg(APIC_ID);
-  apicLogicalDst = readReg(APIC_LOGICAL_DESTINATION);
-  apicDestFormat = readReg(APIC_DESTINATION_FORMAT);
-
-  pid = (apicID & 0xFF000000) >> 24;
-  lid = (apicLogicalDst & 0xFF000000) >> 24;
-  model = (apicDestFormat & 0xF0000000) >> 28;
-}
 
 void
 X86ISA::Interrupts::setCPU(BaseCPU * newCPU)
@@ -375,10 +361,10 @@ X86ISA::Interrupts::getIntAddrRange() const
 uint32_t
 X86ISA::Interrupts::readReg(ApicRegIndex reg)
 {
-    /* if (reg >= APIC_TRIGGER_MODE(0) &&
+    if (reg >= APIC_TRIGGER_MODE(0) &&
             reg <= APIC_TRIGGER_MODE(15)) {
         panic("Local APIC Trigger Mode registers are unimplemented.\n");
-    } */
+    }
     switch (reg) {
       case APIC_ARBITRATION_PRIORITY:
         panic("Local APIC Arbitration Priority register unimplemented.\n");
@@ -418,10 +404,10 @@ X86ISA::Interrupts::setReg(ApicRegIndex reg, uint32_t val)
             reg <= APIC_IN_SERVICE(15)) {
         panic("Local APIC In-Service registers are unimplemented.\n");
     }
-    /* if (reg >= APIC_TRIGGER_MODE(0) &&
+    if (reg >= APIC_TRIGGER_MODE(0) &&
             reg <= APIC_TRIGGER_MODE(15)) {
         panic("Local APIC Trigger Mode registers are unimplemented.\n");
-    } */
+    }
     if (reg >= APIC_INTERRUPT_REQUEST(0) &&
             reg <= APIC_INTERRUPT_REQUEST(15)) {
         panic("Local APIC Interrupt Request registers "

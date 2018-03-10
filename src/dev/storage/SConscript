@@ -70,7 +70,6 @@ DebugFlag('DiskImageWrite')
 DebugFlag('SimpleDisk')
 DebugFlag('SimpleDiskData')
 
-DebugFlag('NVMeInterrupt')
 
 CompoundFlag('DiskImageAll', [ 'DiskImageRead', 'DiskImageWrite' ])
 CompoundFlag('IdeAll', [ 'IdeCtrl', 'IdeDisk' ])

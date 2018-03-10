@@ -580,16 +580,16 @@ let {{
     exec_output += PredOpExecute.subst(m5workendIop)
 
     m5tickCode64 = '''
-                    PseudoInst::m5GetTick(
+                    PseudoInst::getTick(
                       xc->tcBase(),
                       X0
                     );'''
 
 
     m5tickCode = '''
-                    PseudoInst::m5GetTick(
+                    PseudoInst::getTick(
                       xc->tcBase(),
-                      join32to64(R1, R0)
+                      R0
                     );'''
 
     m5tickIop = InstObjParams("m5tick", "M5tick64", "PredOp",
@@ -609,17 +609,17 @@ let {{
     exec_output += PredOpExecute.subst(m5tickIop)
 
     m5printCode64 = '''
-                    PseudoInst::m5print(
+                    PseudoInst::print(
                       xc->tcBase(),
                       X0,
                       X1
                     );'''
 
     m5printCode = '''
-                    PseudoInst::m5print(
+                    PseudoInst::print(
                       xc->tcBase(),
-                      join32to64(R1, R0),
-                      join32to64(R3, R2)
+                      R0,
+                      join32to64(R2, R1)
                     );'''
 
     m5printIop = InstObjParams("m5print", "M5print64", "PredOp",

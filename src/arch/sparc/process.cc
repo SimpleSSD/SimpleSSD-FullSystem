@@ -42,6 +42,7 @@
 #include "cpu/thread_context.hh"
 #include "debug/Stack.hh"
 #include "mem/page_table.hh"
+#include "params/Process.hh"
 #include "sim/aux_vector.hh"
 #include "sim/process_impl.hh"
 #include "sim/syscall_return.hh"
@@ -53,10 +54,14 @@ using namespace SparcISA;
 static const int FirstArgumentReg = 8;
 
 
-SparcProcess::SparcProcess(ProcessParams * params, ObjectFile *objFile,
+SparcProcess::SparcProcess(ProcessParams *params, ObjectFile *objFile,
                            Addr _StackBias)
-    : Process(params, objFile), StackBias(_StackBias)
+    : Process(params,
+              new EmulationPageTable(params->name, params->pid, PageBytes),
+              objFile),
+      StackBias(_StackBias)
 {
+    fatal_if(params->useArchPT, "Arch page tables not implemented.");
     // Initialize these to 0s
     fillStart = 0;
     spillStart = 0;

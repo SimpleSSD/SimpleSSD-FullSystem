@@ -24,5 +24,8 @@ m5out
 /system/arm/simple_bootloader/boot.arm
 /system/arm/simple_bootloader/boot_emm.arm
 /system/arm/aarch64_bootloader/boot_emm.arm64
-.clang_complete
 
+# SimpleSSD specific
+.clang_complete
+.clang-format
+*.cfg

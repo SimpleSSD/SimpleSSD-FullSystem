@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013, 2016 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2016-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -157,6 +157,26 @@ currEL(ThreadContext *tc)
     return (ExceptionLevel) (uint8_t) cpsr.el;
 }
 
+/**
+ * This function checks whether selected EL provided as an argument
+ * is using the AArch32 ISA. This information might be unavailable
+ * at the current EL status: it hence returns a pair of boolean values:
+ * a first boolean, true if information is available (known),
+ * and a second one, true if EL is using AArch32, false for AArch64.
+ *
+ * @param tc The thread context.
+ * @param el The target exception level.
+ * @retval known is FALSE for EL0 if the current Exception level
+ *               is not EL0 and EL1 is using AArch64, since it cannot
+ *               determine the state of EL0; TRUE otherwise.
+ * @retval aarch32 is TRUE if the specified Exception level is using AArch32;
+ *                 FALSE otherwise.
+ */
+std::pair<bool, bool>
+ELUsingAArch32K(ThreadContext *tc, ExceptionLevel el);
+
+bool ELIs32(ThreadContext *tc, ExceptionLevel el);
+
 bool ELIs64(ThreadContext *tc, ExceptionLevel el);
 
 bool isBigEndian64(ThreadContext *tc);
@@ -199,9 +219,16 @@ inSecureState(SCR scr, CPSR cpsr)
     }
 }
 
-bool longDescFormatInUse(ThreadContext *tc);
-
 bool inSecureState(ThreadContext *tc);
+
+/**
+ * Return TRUE if an Exception level below EL3 is in Secure state.
+ * Differs from inSecureState in that it ignores the current EL
+ * or Mode in considering security state.
+ */
+inline bool isSecureBelowEL3(ThreadContext *tc);
+
+bool longDescFormatInUse(ThreadContext *tc);
 
 uint32_t getMPIDR(ArmSystem *arm_sys, ThreadContext *tc);
 
@@ -320,6 +347,11 @@ int decodePhysAddrRange64(uint8_t pa_enc);
  * Returns the encoding corresponding to the specified n. of PA bits.
  */
 uint8_t encodePhysAddrRange64(int pa_size);
+
+inline ByteOrder byteOrder(ThreadContext *tc)
+{
+    return isBigEndian64(tc) ? BigEndianByteOrder : LittleEndianByteOrder;
+};
 
 }
 

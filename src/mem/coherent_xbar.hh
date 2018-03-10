@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 ARM Limited
+ * Copyright (c) 2011-2015, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -57,7 +57,6 @@
 #include "mem/snoop_filter.hh"
 #include "mem/xbar.hh"
 #include "params/CoherentXBar.hh"
-#include "params/SystemXBar.hh"
 
 /**
  * A coherent crossbar connects a number of (potentially) snooping
@@ -342,7 +341,7 @@ class CoherentXBar : public BaseXBar
 
     /** Function called by the port when the crossbar is recieving a Atomic
       transaction.*/
-    virtual Tick recvAtomic(PacketPtr pkt, PortID slave_port_id);
+    Tick recvAtomic(PacketPtr pkt, PortID slave_port_id);
 
     /** Function called by the port when the crossbar is recieving an
         atomic snoop transaction.*/
@@ -443,24 +442,6 @@ class CoherentXBar : public BaseXBar
     virtual ~CoherentXBar();
 
     virtual void regStats();
-};
-
-#if THE_ISA == X86_ISA
-#include "arch/x86/interrupts.hh"
-#include "debug/SystemXBar.hh"
-#endif
-
-class SystemXBar : public CoherentXBar
-{
-#if THE_ISA == X86_ISA
-  protected:
-    std::vector<X86ISA::Interrupts *> lapics;
-
-  public:
-    Tick recvAtomic(PacketPtr pkt, PortID slave_port_id) override;
-#endif
-  public:
-    SystemXBar(const SystemXBarParams *p);
 };
 
 #endif //__MEM_COHERENT_XBAR_HH__

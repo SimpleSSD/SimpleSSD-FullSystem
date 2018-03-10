@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2017 ARM Limited
+ * Copyright (c) 2010-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -666,15 +666,37 @@ namespace ArmISA
         MISCREG_CBAR_EL1,               // 598
         MISCREG_CONTEXTIDR_EL2,         // 599
 
-        // Dummy registers
-        MISCREG_NOP,                    // 600
-        MISCREG_RAZ,                    // 601
-        MISCREG_CP14_UNIMPL,            // 602
-        MISCREG_CP15_UNIMPL,            // 603
-        MISCREG_A64_UNIMPL,             // 604
-        MISCREG_UNKNOWN,                // 605
+        // These MISCREG_FREESLOT are available Misc Register
+        // slots for future registers to be implemented.
+        MISCREG_FREESLOT_1,             // 600
+        MISCREG_FREESLOT_2,             // 601
+        MISCREG_FREESLOT_3,             // 602
+        MISCREG_FREESLOT_4,             // 603
+        MISCREG_FREESLOT_5,             // 604
+        MISCREG_FREESLOT_6,             // 605
 
-        NUM_MISCREGS                    // 606
+        // NUM_PHYS_MISCREGS specifies the number of actual physical
+        // registers, not considering the following pseudo-registers
+        // (dummy registers), like UNKNOWN, CP15_UNIMPL, MISCREG_IMPDEF_UNIMPL.
+        // Checkpointing should use this physical index when
+        // saving/restoring register values.
+        NUM_PHYS_MISCREGS = 606,        // 606
+
+        // Dummy registers
+        MISCREG_NOP,
+        MISCREG_RAZ,
+        MISCREG_CP14_UNIMPL,
+        MISCREG_CP15_UNIMPL,
+        MISCREG_A64_UNIMPL,
+        MISCREG_UNKNOWN,
+
+        // Implementation defined register: this represent
+        // a pool of unimplemented registers whose access can throw
+        // either UNDEFINED or hypervisor trap exception.
+        MISCREG_IMPDEF_UNIMPL,
+
+        // Total number of Misc Registers: Physical + Dummy
+        NUM_MISCREGS
     };
 
     enum MiscRegInfo {
@@ -1348,13 +1370,23 @@ namespace ArmISA
         "cbar_el1",
         "contextidr_el2",
 
+        "freeslot1",
+        "freeslot2",
+        "freeslot3",
+        "freeslot4",
+        "freeslot5",
+        "freeslot6",
+
+        "num_phys_regs",
+
         // Dummy registers
         "nop",
         "raz",
         "cp14_unimpl",
         "cp15_unimpl",
         "a64_unimpl",
-        "unknown"
+        "unknown",
+        "impl_defined"
     };
 
     static_assert(sizeof(miscRegName) / sizeof(*miscRegName) == NUM_MISCREGS,
@@ -1891,14 +1923,14 @@ namespace ArmISA
     // Uses just the scr.ns bit to pre flatten the misc regs. This is useful
     // for MCR/MRC instructions
     int
-    flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc);
+    snsBankedIndex(MiscRegIndex reg, ThreadContext *tc);
 
     // Flattens a misc reg index using the specified security state. This is
     // used for opperations (eg address translations) where the security
     // state of the register access may differ from the current state of the
     // processor
     int
-    flattenMiscRegNsBanked(MiscRegIndex reg, ThreadContext *tc, bool ns);
+    snsBankedIndex(MiscRegIndex reg, ThreadContext *tc, bool ns);
 
     // Takes a misc reg index and returns the root reg if its one of a set of
     // banked registers

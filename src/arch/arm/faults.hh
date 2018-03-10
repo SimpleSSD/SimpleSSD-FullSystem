@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013, 2016-2017 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2016-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -171,6 +171,22 @@ class ArmFault : public FaultBase
         const ExceptionClass ec;
 
         FaultStat count;
+        FaultVals(const FaultName& name_, const FaultOffset& offset_,
+                const uint16_t& currELTOffset_, const uint16_t& currELHOffset_,
+                const uint16_t& lowerEL64Offset_,
+                const uint16_t& lowerEL32Offset_,
+                const OperatingMode& nextMode_, const uint8_t& armPcOffset_,
+                const uint8_t& thumbPcOffset_, const uint8_t& armPcElrOffset_,
+                const uint8_t& thumbPcElrOffset_, const bool& hypTrappable_,
+                const bool& abortDisable_, const bool& fiqDisable_,
+                const ExceptionClass& ec_)
+        : name(name_), offset(offset_), currELTOffset(currELTOffset_),
+          currELHOffset(currELHOffset_), lowerEL64Offset(lowerEL64Offset_),
+          lowerEL32Offset(lowerEL32Offset_), nextMode(nextMode_),
+          armPcOffset(armPcOffset_), thumbPcOffset(thumbPcOffset_),
+          armPcElrOffset(armPcElrOffset_), thumbPcElrOffset(thumbPcElrOffset_),
+          hypTrappable(hypTrappable_), abortDisable(abortDisable_),
+          fiqDisable(fiqDisable_), ec(ec_) {}
     };
 
     ArmFault(ExtMachInst _machInst = 0, uint32_t _iss = 0) :
@@ -191,7 +207,7 @@ class ArmFault : public FaultBase
     virtual void annotate(AnnotationIDs id, uint64_t val) {}
     virtual FaultStat& countStat() = 0;
     virtual FaultOffset offset(ThreadContext *tc) = 0;
-    virtual FaultOffset offset64() = 0;
+    virtual FaultOffset offset64(ThreadContext *tc) = 0;
     virtual OperatingMode nextMode() = 0;
     virtual bool routeToMonitor(ThreadContext *tc) const = 0;
     virtual bool routeToHyp(ThreadContext *tc) const { return false; }
@@ -221,17 +237,7 @@ class ArmFaultVals : public ArmFault
     FaultStat & countStat() override { return vals.count; }
     FaultOffset offset(ThreadContext *tc) override;
 
-    FaultOffset offset64() override {
-        if (toEL == fromEL) {
-            if (opModeIsT(fromMode))
-                return vals.currELTOffset;
-            return vals.currELHOffset;
-        } else {
-            if (from64)
-                return vals.lowerEL64Offset;
-            return vals.lowerEL32Offset;
-        }
-    }
+    FaultOffset offset64(ThreadContext *tc) override;
 
     OperatingMode nextMode() override { return vals.nextMode; }
     virtual bool routeToMonitor(ThreadContext *tc) const override {
@@ -335,6 +341,8 @@ class SupervisorTrap : public ArmFaultVals<SupervisorTrap>
         overrideEc(_overrideEc)
     {}
 
+    bool routeToHyp(ThreadContext *tc) const override;
+    uint32_t iss() const override;
     ExceptionClass ec(ThreadContext *tc) const override;
 };
 

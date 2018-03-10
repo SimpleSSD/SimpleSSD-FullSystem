@@ -90,18 +90,12 @@
 		msi-parent = <&v2m0>;
 	};
 
-	/* Ths HDLCD controller driver hasn't reached mainline
-	 * yet. Disable it by default in the platform until the DT
-	 * bindings have stabilize.
-	 */
 	hdlcd0: hdlcd@2b000000 {
 		compatible = "arm,hdlcd";
 		reg = <0x0 0x2b000000 0x0 0x1000>;
 		interrupts = <0 63 4>;
 		clocks = <&osc_pxl>;
 		clock-names = "pxlclk";
-
-		status = "disabled";
 	};
 
 	kmi@1c060000 {

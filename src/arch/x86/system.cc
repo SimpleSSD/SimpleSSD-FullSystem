@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2007 The Hewlett-Packard Development Company
+ * Copyright (c) 2018 TU Dresden
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -35,6 +36,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Authors: Gabe Black
+ *          Maximilian Stein
  */
 
 #include "arch/x86/system.hh"
@@ -42,7 +44,6 @@
 #include "arch/x86/bios/intelmp.hh"
 #include "arch/x86/bios/smbios.hh"
 #include "arch/x86/isa_traits.hh"
-#include "arch/x86/utility.hh"
 #include "base/loader/object_file.hh"
 #include "cpu/thread_context.hh"
 #include "params/X86System.hh"
@@ -56,6 +57,54 @@ X86System::X86System(Params *p) :
     mpConfigTable(p->intel_mp_table),
     rsdp(p->acpi_description_table_pointer)
 {
+}
+
+void
+X86ISA::installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
+        SegDescriptor desc, bool longmode)
+{
+    uint64_t base = desc.baseLow + (desc.baseHigh << 24);
+    bool honorBase = !longmode || seg == SEGMENT_REG_FS ||
+                                  seg == SEGMENT_REG_GS ||
+                                  seg == SEGMENT_REG_TSL ||
+                                  seg == SYS_SEGMENT_REG_TR;
+    uint64_t limit = desc.limitLow | (desc.limitHigh << 16);
+    if (desc.g)
+        limit = (limit << 12) | mask(12);
+
+    SegAttr attr = 0;
+
+    attr.dpl = desc.dpl;
+    attr.unusable = 0;
+    attr.defaultSize = desc.d;
+    attr.longMode = desc.l;
+    attr.avl = desc.avl;
+    attr.granularity = desc.g;
+    attr.present = desc.p;
+    attr.system = desc.s;
+    attr.type = desc.type;
+    if (desc.s) {
+        if (desc.type.codeOrData) {
+            // Code segment
+            attr.expandDown = 0;
+            attr.readable = desc.type.r;
+            attr.writable = 0;
+        } else {
+            // Data segment
+            attr.expandDown = desc.type.e;
+            attr.readable = 1;
+            attr.writable = desc.type.w;
+        }
+    } else {
+        attr.readable = 1;
+        attr.writable = 1;
+        attr.expandDown = 0;
+    }
+
+    tc->setMiscReg(MISCREG_SEG_BASE(seg), base);
+    tc->setMiscReg(MISCREG_SEG_EFF_BASE(seg), honorBase ? base : 0);
+    tc->setMiscReg(MISCREG_SEG_LIMIT(seg), limit);
+    tc->setMiscReg(MISCREG_SEG_ATTR(seg), (MiscReg)attr);
 }
 
 void
@@ -100,8 +149,25 @@ X86System::initState()
                         (uint8_t *)(&nullDescriptor), 8);
     numGDTEntries++;
 
-    // 64 bit code segment.
-    SegDescriptor csDesc = codeSegDesc64();
+    SegDescriptor initDesc = 0;
+    initDesc.type.codeOrData = 0; // code or data type
+    initDesc.type.c = 0;          // conforming
+    initDesc.type.r = 1;          // readable
+    initDesc.dpl = 0;             // privilege
+    initDesc.p = 1;               // present
+    initDesc.l = 1;               // longmode - 64 bit
+    initDesc.d = 0;               // operand size
+    initDesc.g = 1;               // granularity
+    initDesc.s = 1;               // system segment
+    initDesc.limitHigh = 0xF;
+    initDesc.limitLow = 0xFFFF;
+    initDesc.baseHigh = 0x0;
+    initDesc.baseLow = 0x0;
+
+    // 64 bit code segment
+    SegDescriptor csDesc = initDesc;
+    csDesc.type.codeOrData = 1;
+    csDesc.dpl = 0;
     // Because we're dealing with a pointer and I don't think it's
     // guaranteed that there isn't anything in a nonvirtual class between
     // it's beginning in memory and it's actual data, we'll use an
@@ -109,48 +175,47 @@ X86System::initState()
     uint64_t csDescVal = csDesc;
     physProxy.writeBlob(GDTBase + numGDTEntries * 8,
                         (uint8_t *)(&csDescVal), 8);
-    SegSelector cs = 0;
-    cs.si = numGDTEntries;
 
     numGDTEntries++;
 
-    tc->setMiscReg(MISCREG_CS, cs);
+    SegSelector cs = 0;
+    cs.si = numGDTEntries - 1;
 
-    // 32 bit data segment.
-    SegDescriptor dsDesc = dataSegDesc();
+    tc->setMiscReg(MISCREG_CS, (MiscReg)cs);
+
+    // 32 bit data segment
+    SegDescriptor dsDesc = initDesc;
     uint64_t dsDescVal = dsDesc;
     physProxy.writeBlob(GDTBase + numGDTEntries * 8,
                         (uint8_t *)(&dsDescVal), 8);
-    SegSelector ds = 0;
-    ds.si = numGDTEntries;
 
     numGDTEntries++;
 
-    tc->setMiscReg(MISCREG_DS, ds);
-    tc->setMiscReg(MISCREG_ES, ds);
-    tc->setMiscReg(MISCREG_FS, ds);
-    tc->setMiscReg(MISCREG_GS, ds);
-    tc->setMiscReg(MISCREG_SS, ds);
+    SegSelector ds = 0;
+    ds.si = numGDTEntries - 1;
 
-    Tss64Desc tssDesc;
-    tssSegDesc64(tssDesc, 0x0, 0xFFFFFFFF);
-    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
-                        (uint8_t *)(&tssDesc), 16);
-
-    SegSelector tss = 0;
-    tss.si = numGDTEntries;
-
-    numGDTEntries += 2;
+    tc->setMiscReg(MISCREG_DS, (MiscReg)ds);
+    tc->setMiscReg(MISCREG_ES, (MiscReg)ds);
+    tc->setMiscReg(MISCREG_FS, (MiscReg)ds);
+    tc->setMiscReg(MISCREG_GS, (MiscReg)ds);
+    tc->setMiscReg(MISCREG_SS, (MiscReg)ds);
 
     tc->setMiscReg(MISCREG_TSL, 0);
-    SegAttr ldtAttr = 0;
-    ldtAttr.unusable = 1;
-    tc->setMiscReg(MISCREG_TSL_ATTR, ldtAttr);
     tc->setMiscReg(MISCREG_TSG_BASE, GDTBase);
     tc->setMiscReg(MISCREG_TSG_LIMIT, 8 * numGDTEntries - 1);
 
-    tc->setMiscReg(MISCREG_TR, tss);
-    installSegDesc(tc, SYS_SEGMENT_REG_TR, tssDesc.low, true);
+    SegDescriptor tssDesc = initDesc;
+    uint64_t tssDescVal = tssDesc;
+    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
+                        (uint8_t *)(&tssDescVal), 8);
+
+    numGDTEntries++;
+
+    SegSelector tss = 0;
+    tss.si = numGDTEntries - 1;
+
+    tc->setMiscReg(MISCREG_TR, (MiscReg)tss);
+    installSegDesc(tc, SYS_SEGMENT_REG_TR, tssDesc, true);
 
     /*
      * Identity map the first 4GB of memory. In order to map this region
@@ -249,12 +314,12 @@ X86System::initState()
     Addr ebdaPos = 0xF0000;
     Addr fixed, table;
 
-    // Write out the SMBios/DMI table
+    // Write out the SMBios/DMI table.
     writeOutSMBiosTable(ebdaPos, fixed, table);
     ebdaPos += (fixed + table);
     ebdaPos = roundUp(ebdaPos, 16);
 
-    // Write out the Intel MP Specification configuration table
+    // Write out the Intel MP Specification configuration table.
     writeOutMPTable(ebdaPos, fixed, table);
     ebdaPos += (fixed + table);
 }
@@ -264,7 +329,7 @@ X86System::writeOutSMBiosTable(Addr header,
         Addr &headerSize, Addr &structSize, Addr table)
 {
     // If the table location isn't specified, just put it after the header.
-    // The header size as of the 2.5 SMBios specification is 0x1F bytes
+    // The header size as of the 2.5 SMBios specification is 0x1F bytes.
     if (!table)
         table = header + 0x1F;
     smbiosTable->setTableAddr(table);

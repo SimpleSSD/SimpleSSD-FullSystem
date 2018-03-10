@@ -387,6 +387,9 @@ for extra_dir in extras_dir_list:
 for root, dirs, files in os.walk(base_dir, topdown=True):
     Dir(root[len(base_dir) + 1:])
 
+# Include SimpleSSD root path
+env.Append(CPPPATH=Dir('./dev/storage/simplessd'))
+
 ########################################################################
 #
 # Walk the tree and execute all SConscripts in subdirectories
@@ -1131,8 +1134,14 @@ def makeEnv(env, label, objsfx, strip=False, disable_partial=False, **kwargs):
 
 # Start out with the compiler flags common to all compilers,
 # i.e. they all use -g for opt and -g -pg for prof
-ccflags = {'debug' : [], 'opt' : ['-g'], 'fast' : [], 'prof' : ['-g', '-pg'],
-           'perf' : ['-g']}
+
+# SimpleSSD
+# Set __STDC_FORMAT_MACROS
+ccflags = {'debug' : ['-D__STDC_FORMAT_MACROS'],
+           'opt' : ['-g', '-D__STDC_FORMAT_MACROS'],
+           'fast' : ['-D__STDC_FORMAT_MACROS'],
+           'prof' : ['-g', '-pg', '-D__STDC_FORMAT_MACROS'],
+           'perf' : ['-g', '-D__STDC_FORMAT_MACROS']}
 
 # Start out with the linker flags common to all linkers, i.e. -pg for
 # prof, and -lprofiler for perf. The -lprofile flag is surrounded by

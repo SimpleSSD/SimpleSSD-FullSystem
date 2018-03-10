@@ -20,7 +20,6 @@
 #include "dev/storage/nvme_interface.hh"
 
 #include "cpu/intr_control.hh"
-#include "debug/NVMeInterrupt.hh"
 #include "dev/storage/simplessd/hil/nvme/controller.hh"
 #include "dev/storage/simplessd/hil/nvme/def.hh"
 #include "dev/storage/simplessd/util/algorithm.hh"
@@ -38,7 +37,7 @@
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p), configPath(p->SSDConfig), periodWork(0),
       lastReadDMAEndAt(0), lastWriteDMAEndAt(0), IS(0), ISold(0),
-      mode(INTERRUPT_PIN), workEvent(this) {
+      mode(INTERRUPT_PIN), workEvent(this), completionEvent(this) {
   SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
                                    []() -> uint64_t { return curTick(); });
 
@@ -446,10 +445,24 @@ void NVMeInterface::doWork() {
   schedule(workEvent, handling + periodWork);
 }
 
+void NVMeInterface::doCompletion() {
+  Tick handling = curTick();
+
+  pController->completion(handling);
+}
+
 void NVMeInterface::enableController(Tick w) {
   periodWork = w;
 
   schedule(workEvent, curTick() + periodWork);
+}
+
+void NVMeInterface::submitCompletion(Tick tick) {
+  if (completionEvent.scheduled()) {
+    deschedule(completionEvent);
+  }
+
+  schedule(completionEvent, tick);
 }
 
 void NVMeInterface::disableController() {

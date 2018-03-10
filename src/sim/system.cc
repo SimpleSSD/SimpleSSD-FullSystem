@@ -47,6 +47,8 @@
 
 #include "sim/system.hh"
 
+#include <algorithm>
+
 #include "arch/remote_gdb.hh"
 #include "arch/utility.hh"
 #include "base/loader/object_file.hh"
@@ -87,7 +89,6 @@ int System::numSystemsRunning = 0;
 
 System::System(Params *p)
     : MemObject(p), _systemPort("system_port", this),
-      _numContexts(0),
       multiThread(p->multi_thread),
       pagePtr(0),
       init_param(p->init_param),
@@ -241,40 +242,34 @@ bool System::breakpoint()
 ContextID
 System::registerThreadContext(ThreadContext *tc, ContextID assigned)
 {
-    int id;
-    if (assigned == InvalidContextID) {
-        for (id = 0; id < threadContexts.size(); id++) {
-            if (!threadContexts[id])
-                break;
-        }
-
-        if (threadContexts.size() <= id)
-            threadContexts.resize(id + 1);
-    } else {
-        if (threadContexts.size() <= assigned)
-            threadContexts.resize(assigned + 1);
-        id = assigned;
+    int id = assigned;
+    if (id == InvalidContextID) {
+        // Find an unused context ID for this thread.
+        id = 0;
+        while (id < threadContexts.size() && threadContexts[id])
+            id++;
     }
 
-    if (threadContexts[id])
-        fatal("Cannot have two CPUs with the same id (%d)\n", id);
+    if (threadContexts.size() <= id)
+        threadContexts.resize(id + 1);
+
+    fatal_if(threadContexts[id],
+             "Cannot have two CPUs with the same id (%d)\n", id);
 
     threadContexts[id] = tc;
-    _numContexts++;
 
 #if THE_ISA != NULL_ISA
     int port = getRemoteGDBPort();
     if (port) {
-        RemoteGDB *rgdb = new RemoteGDB(this, tc);
-        GDBListener *gdbl = new GDBListener(rgdb, port + id);
-        gdbl->listen();
+        RemoteGDB *rgdb = new RemoteGDB(this, tc, port + id);
+        rgdb->listen();
 
         BaseCPU *cpu = tc->getCpuPtr();
         if (cpu->waitForRemoteGDB()) {
             inform("%s: Waiting for a remote GDB connection on port %d.\n",
-                   cpu->name(), gdbl->getPort());
+                   cpu->name(), rgdb->port());
 
-            gdbl->accept();
+            rgdb->connect();
         }
         if (remoteGDB.size() <= id) {
             remoteGDB.resize(id + 1);
@@ -292,12 +287,13 @@ System::registerThreadContext(ThreadContext *tc, ContextID assigned)
 int
 System::numRunningContexts()
 {
-    int running = 0;
-    for (int i = 0; i < _numContexts; ++i) {
-        if (threadContexts[i]->status() != ThreadContext::Halted)
-            ++running;
-    }
-    return running;
+    return std::count_if(
+        threadContexts.cbegin(),
+        threadContexts.cend(),
+        [] (ThreadContext* tc) {
+            return tc->status() != ThreadContext::Halted;
+        }
+    );
 }
 
 void

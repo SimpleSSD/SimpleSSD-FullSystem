@@ -88,10 +88,14 @@ public:
   void updateInterrupt(uint16_t, bool) override;
   void getVendorID(uint16_t &, uint16_t &) override;
   void enableController(Tick) override;
+  void submitCompletion(Tick) override;
   void disableController() override;
   void doWork();
   friend class EventWrapper<NVMeInterface, &NVMeInterface::doWork>;
   EventWrapper<NVMeInterface, &NVMeInterface::doWork> workEvent;
+  void doCompletion();
+  friend class EventWrapper<NVMeInterface, &NVMeInterface::doCompletion>;
+  EventWrapper<NVMeInterface, &NVMeInterface::doCompletion> completionEvent;
 };
 
 #endif

@@ -59,9 +59,12 @@
 using namespace std;
 using namespace RiscvISA;
 
-RiscvProcess::RiscvProcess(ProcessParams * params,
-    ObjectFile *objFile) : Process(params, objFile)
+RiscvProcess::RiscvProcess(ProcessParams *params, ObjectFile *objFile) :
+        Process(params,
+                new EmulationPageTable(params->name, params->pid, PageBytes),
+                objFile)
 {
+    fatal_if(params->useArchPT, "Arch page tables not implemented.");
     const Addr stack_base = 0x7FFFFFFFFFFFFFFFL;
     const Addr max_stack_size = 8 * 1024 * 1024;
     const Addr next_thread_stack_base = stack_base - max_stack_size;
@@ -215,10 +218,10 @@ RiscvProcess::argsInit(int pageSize)
 RiscvISA::IntReg
 RiscvProcess::getSyscallArg(ThreadContext *tc, int &i)
 {
-    // RISC-V only has four system call argument registers by convention, so
-    // if a larger index is requested return 0
+    // If a larger index is requested than there are syscall argument
+    // registers, return 0
     RiscvISA::IntReg retval = 0;
-    if (i < 4)
+    if (i < SyscallArgumentRegs.size())
         retval = tc->readIntReg(SyscallArgumentRegs[i]);
     i++;
     return retval;

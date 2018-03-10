@@ -325,8 +325,6 @@ def addFSOptions(parser):
     parser.add_option("--frame-capture", action="store_true",
             help="Stores changed frame buffers from the VNC server to compressed "\
             "files in the gem5 output directory")
-    parser.add_option("--SSDConfig", action="store", type="string",
-                      help="SimpleSSD configuration file")
 
     if buildEnv['TARGET_ISA'] == "arm":
         parser.add_option("--bare-metal", action="store_true",
@@ -345,6 +343,8 @@ def addFSOptions(parser):
         parser.add_option("--enable-context-switch-stats-dump", \
                 action="store_true", help="Enable stats dump at context "\
                 "switches and dump tasks file (required for Streamline)")
+        parser.add_option("--generate-dtb", action="store_true", default=False,
+                    help="Automatically generate a dtb file")
 
     # Benchmark options
     parser.add_option("--dual", action="store_true",
@@ -372,3 +372,13 @@ def addFSOptions(parser):
     parser.add_option("--command-line-file", action="store",
                       default=None, type="string",
                       help="File with a template for the kernel command line")
+
+    # SimpleSSD options
+    parser.add_option("--ssd-interface", action="store", type="string",
+                      default="nvme",
+                      help="Interface to use to connect SimpleSSD.")
+    parser.add_option("--ssd-config", action="store", type="string",
+                      default=None,
+                      help="Path to SimpleSSD configuration file.")
+    parser.add_option("--disable-ide", action="store_true",
+                      help="Disable default IDE controller.")

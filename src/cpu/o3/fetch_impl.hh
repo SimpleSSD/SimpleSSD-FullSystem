@@ -729,6 +729,7 @@ DefaultFetch<Impl>::finishTranslation(const Fault &fault, RequestPtr mem_req)
         // We will use a nop in ordier to carry the fault.
         DynInstPtr instruction = buildInst(tid, StaticInst::nopStaticInstPtr,
                                            NULL, fetchPC, fetchPC, false);
+        instruction->setNotAnInst();
 
         instruction->setPredTarg(fetchPC);
         instruction->fault = fault;
@@ -1274,17 +1275,6 @@ DefaultFetch<Impl>::fetch(bool &status_change)
                 // We need to process more memory, but we've run out of the
                 // current block.
                 break;
-            }
-
-            if (ISA_HAS_DELAY_SLOT && pcOffset == 0) {
-                // Walk past any annulled delay slot instructions.
-                Addr pcAddr = thisPC.instAddr() & BaseCPU::PCMask;
-                while (fetchAddr != pcAddr && blkOffset < numInsts) {
-                    blkOffset++;
-                    fetchAddr += instSize;
-                }
-                if (blkOffset >= numInsts)
-                    break;
             }
 
             MachInst inst = TheISA::gtoh(cacheInsts[blkOffset]);

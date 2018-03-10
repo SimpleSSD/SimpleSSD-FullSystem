@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2016 ARM Limited
+ * Copyright (c) 2010, 2012-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,6 +44,7 @@
 #define __ARCH_ARM_ISA_HH__
 
 #include "arch/arm/isa_device.hh"
+#include "arch/arm/miscregs.hh"
 #include "arch/arm/registers.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/tlb.hh"
@@ -89,22 +90,251 @@ namespace ArmISA
         bool haveLargeAsid64;
         uint8_t physAddrRange64;
 
-        /** Register translation entry used in lookUpMiscReg */
+        /** MiscReg metadata **/
         struct MiscRegLUTEntry {
-            uint32_t lower;
-            uint32_t upper;
+            uint32_t lower;  // Lower half mapped to this register
+            uint32_t upper;  // Upper half mapped to this register
+            uint64_t _reset; // value taken on reset (i.e. initialization)
+            uint64_t _res0;  // reserved
+            uint64_t _res1;  // reserved
+            uint64_t _raz;   // read as zero (fixed at 0)
+            uint64_t _rao;   // read as one (fixed at 1)
+          public:
+            MiscRegLUTEntry() :
+              lower(0), upper(0),
+              _reset(0), _res0(0), _res1(0), _raz(0), _rao(0) {}
+            uint64_t reset() const { return _reset; }
+            uint64_t res0()  const { return _res0; }
+            uint64_t res1()  const { return _res1; }
+            uint64_t raz()   const { return _raz; }
+            uint64_t rao()   const { return _rao; }
+            // raz/rao implies writes ignored
+            uint64_t wi()    const { return _raz | _rao; }
         };
 
-        struct MiscRegInitializerEntry {
-            uint32_t index;
-            struct MiscRegLUTEntry entry;
+        /** Metadata table accessible via the value of the register */
+        static std::vector<struct MiscRegLUTEntry> lookUpMiscReg;
+
+        class MiscRegLUTEntryInitializer {
+            struct MiscRegLUTEntry &entry;
+            std::bitset<NUM_MISCREG_INFOS> &info;
+            typedef const MiscRegLUTEntryInitializer& chain;
+          public:
+            chain mapsTo(uint32_t l, uint32_t u = 0) const {
+                entry.lower = l;
+                entry.upper = u;
+                return *this;
+            }
+            chain res0(uint64_t mask) const {
+                entry._res0 = mask;
+                return *this;
+            }
+            chain res1(uint64_t mask) const {
+                entry._res1 = mask;
+                return *this;
+            }
+            chain raz(uint64_t mask) const {
+                entry._raz  = mask;
+                return *this;
+            }
+            chain rao(uint64_t mask) const {
+                entry._rao  = mask;
+                return *this;
+            }
+            chain implemented(bool v = true) const {
+                info[MISCREG_IMPLEMENTED] = v;
+                return *this;
+            }
+            chain unimplemented() const {
+                return implemented(false);
+            }
+            chain unverifiable(bool v = true) const {
+                info[MISCREG_UNVERIFIABLE] = v;
+                return *this;
+            }
+            chain warnNotFail(bool v = true) const {
+                info[MISCREG_WARN_NOT_FAIL] = v;
+                return *this;
+            }
+            chain mutex(bool v = true) const {
+                info[MISCREG_MUTEX] = v;
+                return *this;
+            }
+            chain banked(bool v = true) const {
+                info[MISCREG_BANKED] = v;
+                return *this;
+            }
+            chain bankedChild(bool v = true) const {
+                info[MISCREG_BANKED_CHILD] = v;
+                return *this;
+            }
+            chain userNonSecureRead(bool v = true) const {
+                info[MISCREG_USR_NS_RD] = v;
+                return *this;
+            }
+            chain userNonSecureWrite(bool v = true) const {
+                info[MISCREG_USR_NS_WR] = v;
+                return *this;
+            }
+            chain userSecureRead(bool v = true) const {
+                info[MISCREG_USR_S_RD] = v;
+                return *this;
+            }
+            chain userSecureWrite(bool v = true) const {
+                info[MISCREG_USR_S_WR] = v;
+                return *this;
+            }
+            chain user(bool v = true) const {
+                userNonSecureRead(v);
+                userNonSecureWrite(v);
+                userSecureRead(v);
+                userSecureWrite(v);
+                return *this;
+            }
+            chain privNonSecureRead(bool v = true) const {
+                info[MISCREG_PRI_NS_RD] = v;
+                return *this;
+            }
+            chain privNonSecureWrite(bool v = true) const {
+                info[MISCREG_PRI_NS_WR] = v;
+                return *this;
+            }
+            chain privSecureRead(bool v = true) const {
+                info[MISCREG_PRI_S_RD] = v;
+                return *this;
+            }
+            chain privSecureWrite(bool v = true) const {
+                info[MISCREG_PRI_S_WR] = v;
+                return *this;
+            }
+            chain privSecure(bool v = true) const {
+                privSecureRead(v);
+                privSecureWrite(v);
+                return *this;
+            }
+            chain hypRead(bool v = true) const {
+                info[MISCREG_HYP_RD] = v;
+                return *this;
+            }
+            chain hypWrite(bool v = true) const {
+                info[MISCREG_HYP_WR] = v;
+                return *this;
+            }
+            chain hyp(bool v = true) const {
+                hypRead(v);
+                hypWrite(v);
+                return *this;
+            }
+            chain monSecureRead(bool v = true) const {
+                info[MISCREG_MON_NS0_RD] = v;
+                return *this;
+            }
+            chain monSecureWrite(bool v = true) const {
+                info[MISCREG_MON_NS0_WR] = v;
+                return *this;
+            }
+            chain monNonSecureRead(bool v = true) const {
+                info[MISCREG_MON_NS1_RD] = v;
+                return *this;
+            }
+            chain monNonSecureWrite(bool v = true) const {
+                info[MISCREG_MON_NS1_WR] = v;
+                return *this;
+            }
+            chain mon(bool v = true) const {
+                monSecureRead(v);
+                monSecureWrite(v);
+                monNonSecureRead(v);
+                monNonSecureWrite(v);
+                return *this;
+            }
+            chain monSecure(bool v = true) const {
+                monSecureRead(v);
+                monSecureWrite(v);
+                return *this;
+            }
+            chain monNonSecure(bool v = true) const {
+                monNonSecureRead(v);
+                monNonSecureWrite(v);
+                return *this;
+            }
+            chain allPrivileges(bool v = true) const {
+                userNonSecureRead(v);
+                userNonSecureWrite(v);
+                userSecureRead(v);
+                userSecureWrite(v);
+                privNonSecureRead(v);
+                privNonSecureWrite(v);
+                privSecureRead(v);
+                privSecureWrite(v);
+                hypRead(v);
+                hypWrite(v);
+                monSecureRead(v);
+                monSecureWrite(v);
+                monNonSecureRead(v);
+                monNonSecureWrite(v);
+                return *this;
+            }
+            chain nonSecure(bool v = true) const {
+                userNonSecureRead(v);
+                userNonSecureWrite(v);
+                privNonSecureRead(v);
+                privNonSecureWrite(v);
+                hypRead(v);
+                hypWrite(v);
+                monNonSecureRead(v);
+                monNonSecureWrite(v);
+                return *this;
+            }
+            chain secure(bool v = true) const {
+                userSecureRead(v);
+                userSecureWrite(v);
+                privSecureRead(v);
+                privSecureWrite(v);
+                monSecureRead(v);
+                monSecureWrite(v);
+                return *this;
+            }
+            chain reads(bool v) const {
+                userNonSecureRead(v);
+                userSecureRead(v);
+                privNonSecureRead(v);
+                privSecureRead(v);
+                hypRead(v);
+                monSecureRead(v);
+                monNonSecureRead(v);
+                return *this;
+            }
+            chain writes(bool v) const {
+                userNonSecureWrite(v);
+                userSecureWrite(v);
+                privNonSecureWrite(v);
+                privSecureWrite(v);
+                hypWrite(v);
+                monSecureWrite(v);
+                monNonSecureWrite(v);
+                return *this;
+            }
+            chain exceptUserMode() const {
+                user(0);
+                return *this;
+            }
+            MiscRegLUTEntryInitializer(struct MiscRegLUTEntry &e,
+                                       std::bitset<NUM_MISCREG_INFOS> &i)
+              : entry(e),
+                info(i)
+            {
+                // force unimplemented registers to be thusly declared
+                implemented(1);
+            }
         };
 
-        /** Register table noting all translations */
-        static const struct MiscRegInitializerEntry MiscRegSwitch[];
+        const MiscRegLUTEntryInitializer InitReg(uint32_t reg) {
+            return MiscRegLUTEntryInitializer(lookUpMiscReg[reg],
+                                              miscRegInfo[reg]);
+        }
 
-        /** Translation table accessible via the value of the register */
-        std::vector<struct MiscRegLUTEntry> lookUpMiscReg;
+        void initializeMiscRegMetadata();
 
         MiscReg miscRegs[NumMiscRegs];
         const IntRegIndex *intRegMap;
@@ -399,7 +629,7 @@ namespace ArmISA
         void serialize(CheckpointOut &cp) const
         {
             DPRINTF(Checkpoint, "Serializing Arm Misc Registers\n");
-            SERIALIZE_ARRAY(miscRegs, NumMiscRegs);
+            SERIALIZE_ARRAY(miscRegs, NUM_PHYS_MISCREGS);
 
             SERIALIZE_SCALAR(highestELIs64);
             SERIALIZE_SCALAR(haveSecurity);
@@ -411,7 +641,7 @@ namespace ArmISA
         void unserialize(CheckpointIn &cp)
         {
             DPRINTF(Checkpoint, "Unserializing Arm Misc Registers\n");
-            UNSERIALIZE_ARRAY(miscRegs, NumMiscRegs);
+            UNSERIALIZE_ARRAY(miscRegs, NUM_PHYS_MISCREGS);
             CPSR tmp_cpsr = miscRegs[MISCREG_CPSR];
             updateRegMap(tmp_cpsr);
 

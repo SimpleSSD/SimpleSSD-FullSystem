@@ -737,18 +737,4 @@ namespace ArmISA
 
 } // namespace ArmISA
 
-namespace std {
-
-template<>
-struct hash<ArmISA::ExtMachInst> :
-        public hash<ArmISA::ExtMachInst::__DataType> {
-
-    size_t operator()(const ArmISA::ExtMachInst &emi) const {
-        return hash<ArmISA::ExtMachInst::__DataType>::operator()(emi);
-    }
-
-};
-
-}
-
 #endif

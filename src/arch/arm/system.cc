@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013, 2015,2017 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2015,2017-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,6 +44,7 @@
 
 #include <iostream>
 
+#include "arch/arm/semihosting.hh"
 #include "base/loader/object_file.hh"
 #include "base/loader/symtab.hh"
 #include "cpu/thread_context.hh"
@@ -62,12 +63,15 @@ ArmSystem::ArmSystem(Params *p)
       _haveVirtualization(p->have_virtualization),
       _genericTimer(nullptr),
       _highestELIs64(p->highest_el_is_64),
-      _resetAddr64(p->reset_addr_64),
+      _resetAddr64(p->auto_reset_addr_64 ?
+                   (kernelEntry & loadAddrMask) + loadAddrOffset :
+                   p->reset_addr_64),
       _physAddrRange64(p->phys_addr_range_64),
       _haveLargeAsid64(p->have_large_asid_64),
       _m5opRange(p->m5ops_base ?
                  RangeSize(p->m5ops_base, 0x10000) :
                  AddrRange(1, 0)), // Create an empty range if disabled
+      semihosting(p->semihosting),
       multiProc(p->multi_proc)
 {
     // Check if the physical address range is valid
@@ -264,6 +268,28 @@ bool
 ArmSystem::haveLargeAsid64(ThreadContext *tc)
 {
     return getArmSystem(tc)->haveLargeAsid64();
+}
+
+bool
+ArmSystem::haveSemihosting(ThreadContext *tc)
+{
+    return FullSystem && getArmSystem(tc)->haveSemihosting();
+}
+
+uint64_t
+ArmSystem::callSemihosting64(ThreadContext *tc,
+                             uint32_t op, uint64_t param)
+{
+    ArmSystem *sys = getArmSystem(tc);
+    return sys->semihosting->call64(tc, op, param);
+}
+
+uint32_t
+ArmSystem::callSemihosting32(ThreadContext *tc,
+                             uint32_t op, uint32_t param)
+{
+    ArmSystem *sys = getArmSystem(tc);
+    return sys->semihosting->call32(tc, op, param);
 }
 
 ArmSystem *
