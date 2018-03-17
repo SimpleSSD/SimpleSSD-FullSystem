@@ -70,6 +70,7 @@ def format M5ops() {{
             case M5OP_PRINT: return new M5print(machInst);
             case M5OP_WORK_BEGIN: return new M5workbegin(machInst);
             case M5OP_WORK_END: return new M5workend(machInst);
+            default: return new Unknown(machInst);
         }
    }
    '''

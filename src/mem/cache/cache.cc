@@ -419,6 +419,9 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         std::memcpy(blk->data, pkt->getConstPtr<uint8_t>(), blkSize);
         DPRINTF(Cache, "%s new state is %s\n", __func__, blk->print());
         incHitCount(pkt);
+        // populate the time when the block will be ready to access.
+        blk->whenReady = clockEdge(fillLatency) + pkt->headerDelay +
+            pkt->payloadDelay;
         return true;
     } else if (pkt->cmd == MemCmd::CleanEvict) {
         if (blk != nullptr) {
@@ -1656,14 +1659,12 @@ Cache::writebackBlk(CacheBlk *blk)
 
     writebacks[Request::wbMasterId]++;
 
-    Request *req = new Request(tags->regenerateBlkAddr(blk->tag, blk->set),
-                               blkSize, 0, Request::wbMasterId);
+    Request *req = new Request(tags->regenerateBlkAddr(blk), blkSize, 0,
+                               Request::wbMasterId);
     if (blk->isSecure())
         req->setFlags(Request::SECURE);
 
     req->taskId(blk->task_id);
-    blk->task_id= ContextSwitchTaskId::Unknown;
-    blk->tickInserted = curTick();
 
     PacketPtr pkt =
         new Packet(req, blk->isDirty() ?
@@ -1693,8 +1694,8 @@ Cache::writebackBlk(CacheBlk *blk)
 PacketPtr
 Cache::writecleanBlk(CacheBlk *blk, Request::Flags dest, PacketId id)
 {
-    Request *req = new Request(tags->regenerateBlkAddr(blk->tag, blk->set),
-                               blkSize, 0, Request::wbMasterId);
+    Request *req = new Request(tags->regenerateBlkAddr(blk), blkSize, 0,
+                               Request::wbMasterId);
     if (blk->isSecure()) {
         req->setFlags(Request::SECURE);
     }
@@ -1736,14 +1737,12 @@ Cache::cleanEvictBlk(CacheBlk *blk)
     assert(blk && blk->isValid() && !blk->isDirty());
     // Creating a zero sized write, a message to the snoop filter
     Request *req =
-        new Request(tags->regenerateBlkAddr(blk->tag, blk->set), blkSize, 0,
+        new Request(tags->regenerateBlkAddr(blk), blkSize, 0,
                     Request::wbMasterId);
     if (blk->isSecure())
         req->setFlags(Request::SECURE);
 
     req->taskId(blk->task_id);
-    blk->task_id = ContextSwitchTaskId::Unknown;
-    blk->tickInserted = curTick();
 
     PacketPtr pkt = new Packet(req, MemCmd::CleanEvict);
     pkt->allocate();
@@ -1781,8 +1780,8 @@ Cache::writebackVisitor(CacheBlk &blk)
     if (blk.isDirty()) {
         assert(blk.isValid());
 
-        Request request(tags->regenerateBlkAddr(blk.tag, blk.set),
-                        blkSize, 0, Request::funcMasterId);
+        Request request(tags->regenerateBlkAddr(&blk), blkSize, 0,
+                        Request::funcMasterId);
         request.taskId(blk.task_id);
         if (blk.isSecure()) {
             request.setFlags(Request::SECURE);
@@ -1824,7 +1823,7 @@ Cache::allocateBlock(Addr addr, bool is_secure, PacketList &writebacks)
         return nullptr;
 
     if (blk->isValid()) {
-        Addr repl_addr = tags->regenerateBlkAddr(blk->tag, blk->set);
+        Addr repl_addr = tags->regenerateBlkAddr(blk);
         MSHR *repl_mshr = mshrQueue.findMatch(repl_addr, blk->isSecure());
         if (repl_mshr) {
             // must be an outstanding upgrade request
@@ -1906,7 +1905,9 @@ Cache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
             blk = tempBlock;
             tempBlock->set = tags->extractSet(addr);
             tempBlock->tag = tags->extractTag(addr);
-            // @todo: set security state as well...
+            if (is_secure) {
+                tempBlock->status |= BlkSecure;
+            }
             DPRINTF(Cache, "using temp block for %#llx (%s)\n", addr,
                     is_secure ? "s" : "ns");
         } else {

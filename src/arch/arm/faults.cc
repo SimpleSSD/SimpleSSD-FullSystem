@@ -177,7 +177,7 @@ uint8_t ArmFault::aarch64FaultSources[] = {
     0x0d,  // PermissionL1
     0x0e,  // PermissionL2
     0x0f,  // PermissionL3
-    0xff,  // DebugEvent (INVALID)
+    0x22,  // DebugEvent
     0x10,  // SynchronousExternalAbort
     0x30,  // TLBConflictAbort
     0x18,  // SynchPtyErrOnMemoryAccess
@@ -426,42 +426,59 @@ ArmFault::setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg)
 }
 
 void
-ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
+ArmFault::update(ThreadContext *tc)
 {
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
 
-    if (ArmSystem::highestELIs64(tc)) {  // ARMv8
-        // Determine source exception level and mode
-        fromMode = (OperatingMode) (uint8_t) cpsr.mode;
-        fromEL = opModeToEL(fromMode);
-        if (opModeIs64(fromMode))
-            from64 = true;
+    // Determine source exception level and mode
+    fromMode = (OperatingMode) (uint8_t) cpsr.mode;
+    fromEL = opModeToEL(fromMode);
+    if (opModeIs64(fromMode))
+        from64 = true;
 
-        // Determine target exception level
-        if (ArmSystem::haveSecurity(tc) && routeToMonitor(tc)) {
-            toEL = EL3;
-        } else if (ArmSystem::haveVirtualization(tc) && routeToHyp(tc)) {
-            toEL = EL2;
-            hypRouted = true;
-        } else {
-            toEL = opModeToEL(nextMode());
-        }
+    // Determine target exception level (aarch64) or target execution
+    // mode (aarch32).
+    if (ArmSystem::haveSecurity(tc) && routeToMonitor(tc)) {
+        toMode = MODE_MON;
+        toEL = EL3;
+    } else if (ArmSystem::haveVirtualization(tc) && routeToHyp(tc)) {
+        toMode = MODE_HYP;
+        toEL = EL2;
+        hypRouted = true;
+    } else {
+        toMode = nextMode();
+        toEL = opModeToEL(toMode);
+    }
 
-        if (fromEL > toEL)
-            toEL = fromEL;
+    if (fromEL > toEL)
+        toEL = fromEL;
 
-        if (toEL == ArmSystem::highestEL(tc) || ELIs64(tc, toEL)) {
-            // Invoke exception handler in AArch64 state
-            to64 = true;
-            invoke64(tc, inst);
-            return;
-        }
+    to64 = ELIs64(tc, toEL);
+
+    // The fault specific informations have been updated; it is
+    // now possible to use them inside the fault.
+    faultUpdated = true;
+}
+
+void
+ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
+{
+
+    // Update fault state informations, like the starting mode (aarch32)
+    // or EL (aarch64) and the ending mode or EL.
+    // From the update function we are also evaluating if the fault must
+    // be handled in AArch64 mode (to64).
+    update(tc);
+
+    if (to64) {
+        // Invoke exception handler in AArch64 state
+        invoke64(tc, inst);
+        return;
     }
 
     // ARMv7 (ARM ARM issue C B1.9)
 
     bool have_security       = ArmSystem::haveSecurity(tc);
-    bool have_virtualization = ArmSystem::haveVirtualization(tc);
 
     FaultBase::invoke(tc);
     if (!FullSystem)
@@ -489,15 +506,6 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
         armInst->annotateFault(this);
     }
 
-    if (have_security && routeToMonitor(tc)) {
-        cpsr.mode = MODE_MON;
-    } else if (have_virtualization && routeToHyp(tc)) {
-        cpsr.mode = MODE_HYP;
-        hypRouted = true;
-    } else {
-        cpsr.mode = nextMode();
-    }
-
     // Ensure Secure state if initially in Monitor mode
     if (have_security && saved_cpsr.mode == MODE_MON) {
         SCR scr = tc->readMiscRegNoEffect(MISCREG_SCR);
@@ -506,6 +514,9 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
             tc->setMiscRegNoEffect(MISCREG_SCR, scr);
         }
     }
+
+    CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
+    cpsr.mode = toMode;
 
     // some bits are set differently if we have been routed to hyp mode
     if (cpsr.mode == MODE_HYP) {
@@ -572,7 +583,7 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
             setSyndrome(tc, MISCREG_HSR);
         break;
       case MODE_HYP:
-        assert(have_virtualization);
+        assert(ArmSystem::haveVirtualization(tc));
         tc->setMiscReg(MISCREG_SPSR_HYP, saved_cpsr);
         setSyndrome(tc, MISCREG_HSR);
         break;
@@ -1020,13 +1031,13 @@ AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     }
     // Get effective fault source encoding
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
-    FSR  fsr  = getFsr(tc);
 
     // source must be determined BEFORE invoking generic routines which will
     // try to set hsr etc. and are based upon source!
     ArmFaultVals<T>::invoke(tc, inst);
 
     if (!this->to64) {  // AArch32
+        FSR  fsr  = getFsr(tc);
         if (cpsr.mode == MODE_HYP) {
             tc->setMiscReg(T::HFarIndex, faultAddr);
         } else if (stage2) {
@@ -1056,33 +1067,64 @@ AbortFault<T>::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 }
 
 template<class T>
-FSR
-AbortFault<T>::getFsr(ThreadContext *tc)
+void
+AbortFault<T>::setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg)
 {
-    FSR fsr = 0;
-
-    if (((CPSR) tc->readMiscRegNoEffect(MISCREG_CPSR)).width) {
-        // AArch32
-        assert(tranMethod != ArmFault::UnknownTran);
-        if (tranMethod == ArmFault::LpaeTran) {
-            srcEncoded = ArmFault::longDescFaultSources[source];
-            fsr.status = srcEncoded;
-            fsr.lpae   = 1;
-        } else {
-            srcEncoded = ArmFault::shortDescFaultSources[source];
-            fsr.fsLow  = bits(srcEncoded, 3, 0);
-            fsr.fsHigh = bits(srcEncoded, 4);
-            fsr.domain = static_cast<uint8_t>(domain);
-        }
-        fsr.wnr = (write ? 1 : 0);
-        fsr.ext = 0;
-    } else {
-        // AArch64
-        srcEncoded = ArmFault::aarch64FaultSources[source];
-    }
+    srcEncoded = getFaultStatusCode(tc);
     if (srcEncoded == ArmFault::FaultSourceInvalid) {
         panic("Invalid fault source\n");
     }
+    ArmFault::setSyndrome(tc, syndrome_reg);
+}
+
+template<class T>
+uint8_t
+AbortFault<T>::getFaultStatusCode(ThreadContext *tc) const
+{
+
+    panic_if(!this->faultUpdated,
+             "Trying to use un-updated ArmFault internal variables\n");
+
+    uint8_t fsc = 0;
+
+    if (!this->to64) {
+        // AArch32
+        assert(tranMethod != ArmFault::UnknownTran);
+        if (tranMethod == ArmFault::LpaeTran) {
+            fsc = ArmFault::longDescFaultSources[source];
+        } else {
+            fsc = ArmFault::shortDescFaultSources[source];
+        }
+    } else {
+        // AArch64
+        fsc = ArmFault::aarch64FaultSources[source];
+    }
+
+    return fsc;
+}
+
+template<class T>
+FSR
+AbortFault<T>::getFsr(ThreadContext *tc) const
+{
+    FSR fsr = 0;
+
+    auto fsc = getFaultStatusCode(tc);
+
+    // AArch32
+    assert(tranMethod != ArmFault::UnknownTran);
+    if (tranMethod == ArmFault::LpaeTran) {
+        fsr.status = fsc;
+        fsr.lpae   = 1;
+    } else {
+        fsr.fsLow  = bits(fsc, 3, 0);
+        fsr.fsHigh = bits(fsc, 4);
+        fsr.domain = static_cast<uint8_t>(domain);
+    }
+
+    fsr.wnr = (write ? 1 : 0);
+    fsr.ext = 0;
+
     return fsr;
 }
 
@@ -1430,6 +1472,20 @@ PCAlignmentFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     assert(from64);
     // Set the FAR
     tc->setMiscReg(getFaultAddrReg64(), faultPC);
+}
+
+bool
+PCAlignmentFault::routeToHyp(ThreadContext *tc) const
+{
+    bool toHyp = false;
+
+    SCR  scr  = tc->readMiscRegNoEffect(MISCREG_SCR_EL3);
+    HCR  hcr  = tc->readMiscRegNoEffect(MISCREG_HCR_EL2);
+    CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
+
+    // if HCR.TGE is set to 1, take to Hyp mode through Hyp Trap vector
+    toHyp |= !inSecureState(scr, cpsr) && hcr.tge && (cpsr.el == EL0);
+    return toHyp;
 }
 
 SPAlignmentFault::SPAlignmentFault()

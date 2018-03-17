@@ -62,7 +62,7 @@ unameFunc(SyscallDesc *desc, int callnum, Process *process,
 
     strcpy(name->sysname, "Linux");
     strcpy(name->nodename, "sim.gem5.org");
-    strcpy(name->release, "3.0.0");
+    strcpy(name->release, "3.2.0");
     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
     strcpy(name->machine, "x86_64");
 
@@ -522,7 +522,7 @@ static SyscallDesc syscallDescs64[] = {
     /* 299 */ SyscallDesc("recvmmsg", unimplementedFunc),
     /* 300 */ SyscallDesc("fanotify_init", unimplementedFunc),
     /* 301 */ SyscallDesc("fanotify_mark", unimplementedFunc),
-    /* 302 */ SyscallDesc("prlimit64", unimplementedFunc),
+    /* 302 */ SyscallDesc("prlimit64", prlimitFunc<X86Linux64>),
     /* 303 */ SyscallDesc("name_to_handle_at", unimplementedFunc),
     /* 304 */ SyscallDesc("open_by_handle_at", unimplementedFunc),
     /* 305 */ SyscallDesc("clock_adjtime", unimplementedFunc),

@@ -56,8 +56,11 @@ using namespace std;
 
 BaseSetAssoc::BaseSetAssoc(const Params *p)
     :BaseTags(p), assoc(p->assoc), allocAssoc(p->assoc),
+     blks(p->size / p->block_size),
+     dataBlks(new uint8_t[p->size]), // Allocate data storage in one big chunk
      numSets(p->size / (p->block_size * p->assoc)),
-     sequentialAccess(p->sequential_access)
+     sequentialAccess(p->sequential_access),
+     sets(p->size / (p->block_size * p->assoc))
 {
     // Check parameters
     if (blkSize < 4 || !isPowerOf2(blkSize)) {
@@ -74,12 +77,6 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
     setMask = numSets - 1;
     tagShift = setShift + floorLog2(numSets);
 
-    sets = new SetType[numSets];
-    blks = new BlkType[numSets * assoc];
-    // allocate data storage in one big chunk
-    numBlocks = numSets * assoc;
-    dataBlks = new uint8_t[numBlocks * blkSize];
-
     unsigned blkIndex = 0;       // index into blks array
     for (unsigned i = 0; i < numSets; ++i) {
         sets[i].assoc = assoc;
@@ -88,33 +85,27 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
 
         // link in the data blocks
         for (unsigned j = 0; j < assoc; ++j) {
-            // locate next cache block
-            BlkType *blk = &blks[blkIndex];
+            // Select block within the set to be linked
+            BlkType*& blk = sets[i].blks[j];
+
+            // Locate next cache block
+            blk = &blks[blkIndex];
+
+            // Associate a data chunk to the block
             blk->data = &dataBlks[blkSize*blkIndex];
-            ++blkIndex;
 
-            // invalidate new cache block
-            blk->invalidate();
-
-            //EGH Fix Me : do we need to initialize blk?
-
-            // Setting the tag to j is just to prevent long chains in the hash
-            // table; won't matter because the block is invalid
+            // Setting the tag to j is just to prevent long chains in the
+            // hash table; won't matter because the block is invalid
             blk->tag = j;
-            blk->whenReady = 0;
-            blk->isTouched = false;
-            sets[i].blks[j]=blk;
+
+            // Set its set and way
             blk->set = i;
             blk->way = j;
+
+            // Update block index
+            ++blkIndex;
         }
     }
-}
-
-BaseSetAssoc::~BaseSetAssoc()
-{
-    delete [] dataBlks;
-    delete [] blks;
-    delete [] sets;
 }
 
 CacheBlk*

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 ARM Limited
+ * Copyright (c) 2012-2014,2017 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -50,7 +50,8 @@
 
 #include <cassert>
 #include <cstring>
-#include <list>
+#include <memory>
+#include <vector>
 
 #include "mem/cache/base.hh"
 #include "mem/cache/blk.hh"
@@ -71,7 +72,6 @@
  * BlkType* accessBlock();
  * BlkType* findVictim();
  * void insertBlock();
- * void invalidate();
  */
 class BaseSetAssoc : public BaseTags
 {
@@ -87,18 +87,20 @@ class BaseSetAssoc : public BaseTags
     const unsigned assoc;
     /** The allocatable associativity of the cache (alloc mask). */
     unsigned allocAssoc;
+
+    /** The cache blocks. */
+    std::vector<BlkType> blks;
+    /** The data blocks, 1 per cache block. */
+    std::unique_ptr<uint8_t[]> dataBlks;
+
     /** The number of sets in the cache. */
     const unsigned numSets;
+
     /** Whether tags and data are accessed sequentially. */
     const bool sequentialAccess;
 
     /** The cache sets. */
-    SetType *sets;
-
-    /** The cache blocks. */
-    BlkType *blks;
-    /** The data blocks, 1 per cache block. */
-    uint8_t *dataBlks;
+    std::vector<SetType> sets;
 
     /** The amount to shift the address to get the set. */
     int setShift;
@@ -120,7 +122,7 @@ public:
     /**
      * Destructor
      */
-    virtual ~BaseSetAssoc();
+    virtual ~BaseSetAssoc() {};
 
     /**
      * Find the cache block given set and way
@@ -129,22 +131,6 @@ public:
      * @return The cache block.
      */
     CacheBlk *findBlockBySetAndWay(int set, int way) const override;
-
-    /**
-     * Invalidate the given block.
-     * @param blk The block to invalidate.
-     */
-    void invalidate(CacheBlk *blk) override
-    {
-        assert(blk);
-        assert(blk->isValid());
-        tagsInUse--;
-        assert(blk->srcMasterId < cache->system->maxMasters());
-        occupancies[blk->srcMasterId]--;
-        blk->srcMasterId = Request::invldMasterId;
-        blk->task_id = ContextSwitchTaskId::Unknown;
-        blk->tickInserted = curTick();
-    }
 
     /**
      * Access block and update replacement data. May not succeed, in which case
@@ -158,9 +144,7 @@ public:
      */
     CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) override
     {
-        Addr tag = extractTag(addr);
-        int set = extractSet(addr);
-        BlkType *blk = sets[set].findBlk(tag, is_secure);
+        BlkType *blk = findBlock(addr, is_secure);
 
         // Access all tags in parallel, hence one in each way.  The data side
         // either accesses all blocks in parallel, or one block sequentially on
@@ -238,8 +222,6 @@ public:
          uint32_t task_id = pkt->req->taskId();
 
          if (!blk->isTouched) {
-             tagsInUse++;
-             blk->isTouched = true;
              if (!warmedUp && tagsInUse.value() >= warmupBound) {
                  warmedUp = true;
                  warmupCycle = curTick();
@@ -254,15 +236,14 @@ public:
              replacements[0]++;
              totalRefs += blk->refCount;
              ++sampledRefs;
-             blk->refCount = 0;
 
-             // deal with evicted block
-             assert(blk->srcMasterId < cache->system->maxMasters());
-             occupancies[blk->srcMasterId]--;
-
+             invalidate(blk);
              blk->invalidate();
          }
 
+         // Previous block, if existed, has been removed, and now we have
+         // to insert the new one and mark it as touched
+         tagsInUse++;
          blk->isTouched = true;
 
          // Set tag for new block.  Caller is responsible for setting status.
@@ -320,14 +301,14 @@ public:
     }
 
     /**
-     * Regenerate the block address from the tag.
-     * @param tag The tag of the block.
-     * @param set The set of the block.
-     * @return The block address.
+     * Regenerate the block address from the tag and set.
+     *
+     * @param block The block.
+     * @return the block address.
      */
-    Addr regenerateBlkAddr(Addr tag, unsigned set) const override
+    Addr regenerateBlkAddr(const CacheBlk* blk) const override
     {
-        return ((tag << tagShift) | ((Addr)set << setShift));
+        return ((blk->tag << tagShift) | ((Addr)blk->set << setShift));
     }
 
     /**

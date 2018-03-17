@@ -71,7 +71,13 @@ class ArmFault : public FaultBase
     bool to64;  // True if the exception is taken in AArch64 state
     ExceptionLevel fromEL;  // Source exception level
     ExceptionLevel toEL;  // Target exception level
-    OperatingMode fromMode;  // Source operating mode
+    OperatingMode fromMode;  // Source operating mode (aarch32)
+    OperatingMode toMode;  // Next operating mode (aarch32)
+
+    // This variable is true if the above fault specific informations
+    // have been updated. This is to prevent that a client is using their
+    // un-updated default constructed value.
+    bool faultUpdated;
 
     bool hypRouted; // True if the fault has been routed to Hypervisor
 
@@ -191,7 +197,8 @@ class ArmFault : public FaultBase
 
     ArmFault(ExtMachInst _machInst = 0, uint32_t _iss = 0) :
         machInst(_machInst), issRaw(_iss), from64(false), to64(false),
-        fromEL(EL0), toEL(EL0), fromMode(MODE_UNDEFINED), hypRouted(false) {}
+        fromEL(EL0), toEL(EL0), fromMode(MODE_UNDEFINED),
+        faultUpdated(false), hypRouted(false) {}
 
     // Returns the actual syndrome register to use based on the target
     // exception level
@@ -204,6 +211,7 @@ class ArmFault : public FaultBase
                 StaticInst::nullStaticInstPtr) override;
     void invoke64(ThreadContext *tc, const StaticInstPtr &inst =
                   StaticInst::nullStaticInstPtr);
+    void update(ThreadContext *tc);
     virtual void annotate(AnnotationIDs id, uint64_t val) {}
     virtual FaultStat& countStat() = 0;
     virtual FaultOffset offset(ThreadContext *tc) = 0;
@@ -220,7 +228,7 @@ class ArmFault : public FaultBase
     virtual ExceptionClass ec(ThreadContext *tc) const = 0;
     virtual uint32_t iss() const = 0;
     virtual bool isStage2() const { return false; }
-    virtual FSR getFsr(ThreadContext *tc) { return 0; }
+    virtual FSR getFsr(ThreadContext *tc) const { return 0; }
     virtual void setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg);
 };
 
@@ -423,11 +431,13 @@ class AbortFault : public ArmFaultVals<T>
     void invoke(ThreadContext *tc, const StaticInstPtr &inst =
                 StaticInst::nullStaticInstPtr) override;
 
-    FSR getFsr(ThreadContext *tc) override;
+    FSR getFsr(ThreadContext *tc) const override;
+    uint8_t getFaultStatusCode(ThreadContext *tc) const;
     bool abortDisable(ThreadContext *tc) override;
     uint32_t iss() const override;
     bool isStage2() const override { return stage2; }
     void annotate(ArmFault::AnnotationIDs id, uint64_t val) override;
+    void setSyndrome(ThreadContext *tc, MiscRegIndex syndrome_reg) override;
     bool isMMUFault() const;
 };
 
@@ -535,6 +545,7 @@ class PCAlignmentFault : public ArmFaultVals<PCAlignmentFault>
     {}
     void invoke(ThreadContext *tc, const StaticInstPtr &inst =
                 StaticInst::nullStaticInstPtr) override;
+    bool routeToHyp(ThreadContext *tc) const override;
 };
 
 /// Stack pointer alignment fault (AArch64 only)
