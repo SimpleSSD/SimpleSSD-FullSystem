@@ -270,21 +270,6 @@ X86ISA::Interrupts::requestInterrupt(uint8_t vector,
         cpu->wakeup(0);
 }
 
-void
-X86ISA::Interrupts::getID(uint8_t &pid, uint8_t &lid, uint8_t &model) {
-    uint32_t apicID;
-    uint32_t apicLogicalDst;
-    uint32_t apicDestFormat;
-
-    apicID = readReg(APIC_ID);
-    apicLogicalDst = readReg(APIC_LOGICAL_DESTINATION);
-    apicDestFormat = readReg(APIC_DESTINATION_FORMAT);
-
-    pid = (apicID & 0xFF000000) >> 24;
-    lid = (apicLogicalDst & 0xFF000000) >> 24;
-    model = (apicDestFormat & 0xF0000000) >> 28;
-}
-
 
 void
 X86ISA::Interrupts::setCPU(BaseCPU * newCPU)

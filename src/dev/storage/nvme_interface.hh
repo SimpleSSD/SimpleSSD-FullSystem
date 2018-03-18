@@ -21,11 +21,14 @@
 #define __DEV_STORAGE_NVME_INTERFACE_HH__
 
 #include <cinttypes>
+#include <queue>
+#include <unordered_map>
 
 #include "dev/io_device.hh"
 #include "dev/pci/device.hh"
 #include "dev/storage/simplessd/hil/nvme/interface.hh"
-#include "dev/storage/simplessd/util/config.hh"
+#include "dev/storage/simplessd/sim/config_reader.hh"
+#include "dev/storage/simplessd/sim/simulator.hh"
 #include "params/NVMeInterface.hh"
 
 typedef enum _INTERRUPT_MODE {
@@ -34,41 +37,73 @@ typedef enum _INTERRUPT_MODE {
   INTERRUPT_MSIX
 } INTERRUPT_MODE;
 
-class NVMeInterface : public PciDevice, public SimpleSSD::HIL::NVMe::Interface {
+typedef struct _DMAEntry {
+  uint64_t beginAt;
+  uint64_t finishedAt;
+  uint64_t addr;
+  uint64_t size;
+  uint8_t *buffer;
+  void *context;
+  SimpleSSD::DMAFunction &func;
+
+  _DMAEntry(SimpleSSD::DMAFunction &f)
+      : beginAt(0),
+        finishedAt(0),
+        addr(0),
+        size(0),
+        buffer(nullptr),
+        context(nullptr),
+        func(f) {}
+} DMAEntry;
+
+class NVMeInterface : public PciDevice,
+                      public SimpleSSD::HIL::NVMe::Interface,
+                      public SimpleSSD::Simulator {
  private:
   std::string configPath;
   SimpleSSD::ConfigReader conf;
 
-  Addr register_addr;
-  int register_size;
-
-  Tick periodWork;
+  Addr registerTableBaseAddress;
+  int registerTableSize;
 
   // DMA scheduling
-  uint64_t lastReadDMAEndAt;
-  uint64_t lastWriteDMAEndAt;
+  EventFunctionWrapper dmaReadEvent;
+  EventFunctionWrapper dmaWriteEvent;
+  std::queue<DMAEntry> dmaReadQueue;
+  std::queue<DMAEntry> dmaWriteQueue;
+  bool dmaReadPending;
+  bool dmaWritePending;
 
   /* Interrupt logics */
   // Pin based
-  uint32_t IS;
-  uint32_t ISold;
+  uint32_t interruptStatus;
+  uint32_t oldInterruptStatus;
 
   // MSI/MSI-X
   uint16_t vectors;
 
   // MSI-X
-  Addr table_addr;
-  int table_size;
-  Addr pba_addr;
-  int pba_size;
+  Addr tableBaseAddress;
+  int tableSize;
+  Addr pbaBaseAddress;
+  int pbaSize;
 
   // Current Interrupt Mode
   INTERRUPT_MODE mode;
 
-  void writeInterrupt(Addr, size_t, uint8_t *);
-
   // Stats
+  EventFunctionWrapper statUpdateEvent;
   Stats::Scalar *pStats;
+
+  void writeInterrupt(Addr, size_t, uint8_t *);
+  void dmaReadDone();
+  void submitDMARead();
+  void dmaWriteDone();
+  void submitDMAWrite();
+
+  // Simulator
+  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
+  SimpleSSD::Event counter;
 
  public:
   typedef NVMeInterfaceParams Params;
@@ -89,20 +124,22 @@ class NVMeInterface : public PciDevice, public SimpleSSD::HIL::NVMe::Interface {
   void resetStats() override;
   void updateStats();
 
+  // Simulator
+  uint64_t getCurrentTick() override;
+
+  SimpleSSD::Event allocateEvent(SimpleSSD::EventFunction) override;
+  void scheduleEvent(SimpleSSD::Event, uint64_t) override;
+  void descheduleEvent(SimpleSSD::Event) override;
+  bool isScheduled(SimpleSSD::Event) override;
+  void deallocateEvent(SimpleSSD::Event) override;
+
   // Interface <-> Controller
-  uint64_t dmaRead(uint64_t, uint64_t, uint8_t *, uint64_t &) override;
-  uint64_t dmaWrite(uint64_t, uint64_t, uint8_t *, uint64_t &) override;
+  void dmaRead(uint64_t, uint64_t, uint8_t *, SimpleSSD::DMAFunction &,
+               void * = nullptr) override;
+  void dmaWrite(uint64_t, uint64_t, uint8_t *, SimpleSSD::DMAFunction &,
+                void * = nullptr) override;
   void updateInterrupt(uint16_t, bool) override;
   void getVendorID(uint16_t &, uint16_t &) override;
-  void enableController(Tick) override;
-  void submitCompletion(Tick) override;
-  void disableController() override;
-  void doWork();
-  friend class EventWrapper<NVMeInterface, &NVMeInterface::doWork>;
-  EventWrapper<NVMeInterface, &NVMeInterface::doWork> workEvent;
-  void doCompletion();
-  friend class EventWrapper<NVMeInterface, &NVMeInterface::doCompletion>;
-  EventWrapper<NVMeInterface, &NVMeInterface::doCompletion> completionEvent;
 };
 
 #endif

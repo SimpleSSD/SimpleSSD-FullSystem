@@ -29,31 +29,33 @@
 
 #include "dev/storage/simplessd/hil/nvme/controller.hh"
 #include "dev/storage/simplessd/hil/nvme/def.hh"
-#include "dev/storage/simplessd/log/log.hh"
-#include "dev/storage/simplessd/log/trace.hh"
+#include "dev/storage/simplessd/sim/log.hh"
 #include "dev/storage/simplessd/util/algorithm.hh"
 #include "dev/storage/simplessd/util/interface.hh"
+
+#define STAT_UPDATE_PERIOD  1000000
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p),
       configPath(p->SSDConfig),
-      periodWork(0),
-      lastReadDMAEndAt(0),
-      lastWriteDMAEndAt(0),
-      IS(0),
-      ISold(0),
+      dmaReadEvent([this]() { dmaReadDone(); }, name()),
+      dmaWriteEvent([this]() { dmaWriteDone(); }, name()),
+      dmaReadPending(false),
+      dmaWritePending(false),
+      interruptStatus(0),
+      oldInterruptStatus(0),
       mode(INTERRUPT_PIN),
-      pStats(nullptr),
-      workEvent(this),
-      completionEvent(this) {
-  SimpleSSD::Logger::initLogSystem(std::cout, std::cerr,
-                                   []() -> uint64_t { return curTick(); });
+      statUpdateEvent([this]() { updateStats(); }, name()),
+      pStats(nullptr) {
+  SimpleSSD::setSimulator(this);
+
+  SimpleSSD::initLogSystem(std::cout, std::cerr);
 
   if (!conf.init(configPath)) {
-    SimpleSSD::Logger::panic("Failed to read SimpleSSD configuration");
+    SimpleSSD::panic("Failed to read SimpleSSD configuration");
   }
 
-  pController = new SimpleSSD::HIL::NVMe::Controller(this, &conf);
+  pController = new SimpleSSD::HIL::NVMe::Controller(this, conf);
 }
 
 NVMeInterface::~NVMeInterface() {
@@ -88,8 +90,8 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
         val |= (uint32_t)pxcap.data[offset + i - PXCAP_BASE] << (i * 8);
       }
       else {
-        SimpleSSD::Logger::warn(
-            "nvme_interface: Invalid PCI config read offset: %#x", offset);
+        SimpleSSD::warn("nvme_interface: Invalid PCI config read offset: %#x",
+                        offset);
       }
     }
 
@@ -104,8 +106,8 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
         pkt->set<uint32_t>(val);
         break;
       default:
-        SimpleSSD::Logger::warn(
-            "nvme_interface: Invalid PCI config read size: %d", size);
+        SimpleSSD::warn("nvme_interface: Invalid PCI config read size: %d",
+                        size);
         break;
     }
 
@@ -125,16 +127,16 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 
     // Updates on BAR0/1 address
     if (offset == PCI0_BASE_ADDR0 || offset == PCI0_BASE_ADDR1) {
-      register_addr = BARAddrs[0] | ((uint64_t)BARAddrs[1] << 32);
-      register_size = BARSize[0];
+      registerTableBaseAddress = BARAddrs[0] | ((uint64_t)BARAddrs[1] << 32);
+      registerTableSize = BARSize[0];
     }
     else if (offset == PCI0_BASE_ADDR4) {
-      table_addr = BARAddrs[4];
-      table_size = BARSize[4];
+      tableBaseAddress = BARAddrs[4];
+      tableSize = BARSize[4];
     }
     else if (offset == PCI0_BASE_ADDR5) {
-      pba_addr = BARAddrs[5];
-      pba_size = BARSize[5];
+      pbaBaseAddress = BARAddrs[5];
+      pbaSize = BARSize[5];
     }
   }
   else {
@@ -160,8 +162,8 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 
       vectors = (uint16_t)powf(2, (msicap.mc & 0x0070) >> 4);
 
-      SimpleSSD::Logger::debugprint(
-          SimpleSSD::Logger::LOG_HIL_NVME, "INTR    | MSI %s | %d vectors",
+      SimpleSSD::debugprint(
+          SimpleSSD::LOG_HIL_NVME, "INTR    | MSI %s | %d vectors",
           mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
     }
     else if (offset == MSICAP_BASE + 4 &&
@@ -195,8 +197,8 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 
       vectors = (msixcap.mxc & 0x07FF) + 1;
 
-      SimpleSSD::Logger::debugprint(
-          SimpleSSD::Logger::LOG_HIL_NVME, "INTR    | MSI-X %s | %d vectors",
+      SimpleSSD::debugprint(
+          SimpleSSD::LOG_HIL_NVME, "INTR    | MSI-X %s | %d vectors",
           mode == INTERRUPT_PIN ? "disabled" : "enabled", vectors);
     }
     else if (offset == PXCAP_BASE + 8 &&
@@ -240,7 +242,7 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
       pxcap.pxdc2 = pkt->get<uint32_t>();
     }
     else {
-      SimpleSSD::Logger::panic(
+      SimpleSSD::panic(
           "nvme_interface: Invalid PCI config write offset: %#x size: %d",
           offset, size);
     }
@@ -258,8 +260,9 @@ Tick NVMeInterface::read(PacketPtr pkt) {
   Tick begin = curTick();
   Tick end = curTick();
 
-  if (addr >= register_addr && addr + size <= register_addr + register_size) {
-    int offset = addr - register_addr;
+  if (addr >= registerTableBaseAddress &&
+      addr + size <= registerTableBaseAddress + registerTableSize) {
+    int offset = addr - registerTableBaseAddress;
 
     if (offset >= SimpleSSD::HIL::NVMe::REG_DOORBELL_BEGIN) {
       // Read on doorbell register is vendor specific
@@ -269,15 +272,16 @@ Tick NVMeInterface::read(PacketPtr pkt) {
       pController->readRegister(offset, size, buffer, end);
     }
   }
-  else if (addr >= table_addr && addr + size <= table_addr + table_size) {
+  else if (addr >= tableBaseAddress &&
+           addr + size <= tableBaseAddress + tableSize) {
   }
-  else if (addr >= pba_addr && addr + size <= pba_addr + pba_size) {
+  else if (addr >= pbaBaseAddress && addr + size <= pbaBaseAddress + pbaSize) {
   }
   else {
-    SimpleSSD::Logger::panic(
+    SimpleSSD::panic(
         "nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
         " addr: %016" PRIX64 "",
-        register_addr, addr);
+        registerTableBaseAddress, addr);
   }
 
   pkt->makeAtomicResponse();
@@ -292,8 +296,9 @@ Tick NVMeInterface::write(PacketPtr pkt) {
   Tick begin = curTick();
   Tick end = curTick();
 
-  if (addr >= register_addr && addr + size <= register_addr + register_size) {
-    int offset = addr - register_addr;
+  if (addr >= registerTableBaseAddress &&
+      addr + size <= registerTableBaseAddress + registerTableSize) {
+    int offset = addr - registerTableBaseAddress;
 
     if (offset >= SimpleSSD::HIL::NVMe::REG_DOORBELL_BEGIN) {
       const int dstrd = 4;
@@ -321,23 +326,24 @@ Tick NVMeInterface::write(PacketPtr pkt) {
       pController->writeRegister(offset, size, buffer, end);
     }
   }
-  else if (addr >= table_addr && addr + size <= table_addr + table_size) {
-    uint64_t entry = (addr - table_addr) / 16;
-    uint64_t offset = (addr - table_addr) % 16;
+  else if (addr >= tableBaseAddress &&
+           addr + size <= tableBaseAddress + tableSize) {
+    uint64_t entry = (addr - tableBaseAddress) / 16;
+    uint64_t offset = (addr - tableBaseAddress) % 16;
 
     memcpy(msix_table.at(entry).data + offset / 4, buffer, size);
   }
-  else if (addr >= pba_addr && addr + size <= pba_addr + pba_size) {
-    uint64_t entry = (addr - pba_addr) / 16;
-    uint64_t offset = (addr - pba_addr) % 16;
+  else if (addr >= pbaBaseAddress && addr + size <= pbaBaseAddress + pbaSize) {
+    uint64_t entry = (addr - pbaBaseAddress) / 16;
+    uint64_t offset = (addr - pbaBaseAddress) % 16;
 
     memcpy(&msix_pba.at(entry) + offset, buffer, size);
   }
   else {
-    SimpleSSD::Logger::panic(
+    SimpleSSD::panic(
         "nvme_interface: Invalid address access! BAR0 base: %016" PRIX64
         " addr: %016" PRIX64 "",
-        register_addr, addr);
+        registerTableBaseAddress, addr);
   }
 
   pkt->makeAtomicResponse();
@@ -346,97 +352,144 @@ Tick NVMeInterface::write(PacketPtr pkt) {
 }
 
 void NVMeInterface::writeInterrupt(Addr addr, size_t size, uint8_t *data) {
-  Addr dmaAddr = hostInterface.dmaAddr(addr);
+  static SimpleSSD::DMAFunction empty = [](uint64_t, void *) {};
 
-  DmaDevice::dmaWrite(dmaAddr, size, NULL, data);
+  dmaWrite(addr, size, data, empty, nullptr);
 }
 
-uint64_t NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
-                                uint64_t &tick) {
-  uint64_t latency = SimpleSSD::PCIExpress::calculateDelay(
-      SimpleSSD::PCIExpress::PCIE_2_X, 4, size);
-  uint64_t delay = 0;
+void NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
+                            SimpleSSD::DMAFunction &func, void *context) {
+  dmaReadQueue.push(DMAEntry(func));
 
-  // DMA Scheduling
-  if (tick == 0) {
-    tick = lastReadDMAEndAt;
+  auto &iter = dmaReadQueue.back();
+  iter.addr = addr;
+  iter.size = size;
+  iter.buffer = buffer;
+  iter.context = context;
+
+  if (!dmaReadPending) {
+    submitDMARead();
   }
-
-  if (lastReadDMAEndAt <= tick) {
-    lastReadDMAEndAt = tick + latency;
-  }
-  else {
-    delay = lastReadDMAEndAt - tick;
-    lastReadDMAEndAt += latency;
-  }
-
-  if (buffer) {
-    DmaDevice::dmaRead(pciToDma(addr), size, nullptr, buffer);
-  }
-
-  delay += tick;
-  tick = delay + latency;
-
-  return delay;
 }
 
-uint64_t NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
-                                 uint64_t &tick) {
-  uint64_t latency = SimpleSSD::PCIExpress::calculateDelay(
-      SimpleSSD::PCIExpress::PCIE_2_X, 4, size);
-  uint64_t delay = 0;
+void NVMeInterface::dmaReadDone() {
+  auto &iter = dmaReadQueue.front();
+  uint64_t tick = curTick();
 
-  // DMA Scheduling
-  if (tick == 0) {
-    tick = lastWriteDMAEndAt;
+  if (tick < iter.finishedAt) {
+    schedule(dmaReadEvent, iter.finishedAt);
+
+    return;
   }
 
-  if (lastWriteDMAEndAt <= tick) {
-    lastWriteDMAEndAt = tick + latency;
+  iter.func(tick, iter.context);
+  dmaReadQueue.pop();
+  dmaReadPending = false;
+
+  if (dmaReadQueue.size() > 0) {
+    submitDMARead();
+  }
+}
+
+void NVMeInterface::submitDMARead() {
+  auto &iter = dmaReadQueue.front();
+
+  dmaReadPending = true;
+
+  iter.beginAt = curTick();
+  iter.finishedAt =
+      iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
+                         SimpleSSD::PCIExpress::PCIE_2_X, 4, iter.size);
+
+  if (iter.buffer) {
+    DmaDevice::dmaRead(pciToDma(iter.addr), iter.size, &dmaReadEvent,
+                       iter.buffer);
   }
   else {
-    delay = lastWriteDMAEndAt - tick;
-    lastWriteDMAEndAt += latency;
+    schedule(dmaReadEvent, iter.finishedAt);
+  }
+}
+
+void NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
+                             SimpleSSD::DMAFunction &func, void *context) {
+  dmaWriteQueue.push(DMAEntry(func));
+
+  auto &iter = dmaWriteQueue.back();
+  iter.addr = addr;
+  iter.size = size;
+  iter.buffer = buffer;
+  iter.context = context;
+
+  if (!dmaWritePending) {
+    submitDMAWrite();
+  }
+}
+
+void NVMeInterface::dmaWriteDone() {
+  auto &iter = dmaWriteQueue.front();
+  uint64_t tick = curTick();
+
+  if (tick < iter.finishedAt) {
+    schedule(dmaWriteEvent, iter.finishedAt);
+
+    return;
   }
 
-  if (buffer) {
-    DmaDevice::dmaWrite(pciToDma(addr), size, nullptr, buffer);
+  iter.func(tick, iter.context);
+  dmaWriteQueue.pop();
+  dmaWritePending = false;
+
+  if (dmaWriteQueue.size() > 0) {
+    submitDMAWrite();
   }
+}
 
-  delay += tick;
-  tick = delay + latency;
+void NVMeInterface::submitDMAWrite() {
+  auto &iter = dmaWriteQueue.front();
 
-  return delay;
+  dmaWritePending = true;
+
+  iter.beginAt = curTick();
+  iter.finishedAt =
+      iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
+                         SimpleSSD::PCIExpress::PCIE_2_X, 4, iter.size);
+  if (iter.buffer) {
+    DmaDevice::dmaWrite(pciToDma(iter.addr), iter.size, &dmaWriteEvent,
+                        iter.buffer);
+  }
+  else {
+    schedule(dmaWriteEvent, iter.finishedAt);
+  }
 }
 
 void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
   switch (mode) {
     case INTERRUPT_PIN:
       if (post) {
-        IS |= (1 << iv);
+        interruptStatus |= (1 << iv);
       }
       else {
-        IS &= ~(1 << iv);
+        interruptStatus &= ~(1 << iv);
       }
 
-      if (IS == ISold) {
+      if (interruptStatus == oldInterruptStatus) {
         break;
       }
 
-      if (IS == 0) {
+      if (interruptStatus == 0) {
         intrClear();
 
-        SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
-                                      "INTR    | Pin Interrupt Clear");
+        SimpleSSD::debugprint(SimpleSSD::LOG_HIL_NVME,
+                              "INTR    | Pin Interrupt Clear");
       }
       else {
         intrPost();
 
-        SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
-                                      "INTR    | Pin Interrupt Post");
+        SimpleSSD::debugprint(SimpleSSD::LOG_HIL_NVME,
+                              "INTR    | Pin Interrupt Post");
       }
 
-      ISold = IS;
+      oldInterruptStatus = interruptStatus;
 
       break;
     case INTERRUPT_MSI: {
@@ -452,8 +505,8 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
         writeInterrupt(((uint64_t)msicap.mua << 32) | msicap.ma,
                        sizeof(uint32_t), (uint8_t *)&data);
 
-        SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
-                                      "INTR    | MSI sent | vector %d", iv);
+        SimpleSSD::debugprint(SimpleSSD::LOG_HIL_NVME,
+                              "INTR    | MSI sent | vector %d", iv);
       }
     }
 
@@ -466,8 +519,8 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
             ((uint64_t)table.fields.addr_hi << 32) | table.fields.addr_lo,
             sizeof(uint32_t), (uint8_t *)&table.fields.msg_data);
 
-        SimpleSSD::Logger::debugprint(SimpleSSD::Logger::LOG_HIL_NVME,
-                                      "INTR    | MSI-X sent | vector %d", iv);
+        SimpleSSD::debugprint(SimpleSSD::LOG_HIL_NVME,
+                              "INTR    | MSI-X sent | vector %d", iv);
       }
     }
 
@@ -478,43 +531,6 @@ void NVMeInterface::updateInterrupt(uint16_t iv, bool post) {
 void NVMeInterface::getVendorID(uint16_t &vid, uint16_t &ssvid) {
   vid = config.vendor;
   ssvid = config.subsystemVendorID;
-}
-
-void NVMeInterface::doWork() {
-  Tick handling = curTick();
-
-  pController->work(handling);
-
-  // Update stat values
-  updateStats();
-
-  schedule(workEvent, handling + periodWork);
-}
-
-void NVMeInterface::doCompletion() {
-  Tick handling = curTick();
-
-  pController->completion(handling);
-}
-
-void NVMeInterface::enableController(Tick w) {
-  periodWork = w;
-
-  schedule(workEvent, curTick() + periodWork);
-}
-
-void NVMeInterface::submitCompletion(Tick tick) {
-  if (completionEvent.scheduled()) {
-    deschedule(completionEvent);
-  }
-
-  schedule(completionEvent, tick);
-}
-
-void NVMeInterface::disableController() {
-  if (workEvent.scheduled()) {
-    deschedule(workEvent);
-  }
 }
 
 void NVMeInterface::serialize(CheckpointOut &cp) const {
@@ -530,7 +546,7 @@ void NVMeInterface::regStats() {
 
   PciDevice::regStats();
 
-  pController->getStats(list);
+  pController->getStatList(list, "");
 
   if (list.size() > 0) {
     pStats = new Stats::Scalar[list.size()]();
@@ -544,18 +560,97 @@ void NVMeInterface::regStats() {
 void NVMeInterface::resetStats() {
   PciDevice::resetStats();
 
-  pController->resetStats();
+  pController->resetStatValues();
 
   updateStats();
+
+  if (statUpdateEvent.scheduled()) {
+    deschedule(statUpdateEvent);
+  }
 }
 
 void NVMeInterface::updateStats() {
-  std::vector<uint64_t> values;
+  std::vector<double> values;
 
   pController->getStatValues(values);
 
   for (uint32_t i = 0; i < values.size(); i++) {
     pStats[i] = values[i];
+  }
+
+  schedule(statUpdateEvent, curTick() + STAT_UPDATE_PERIOD);
+}
+
+uint64_t NVMeInterface::getCurrentTick() {
+  return curTick();
+}
+
+SimpleSSD::Event NVMeInterface::allocateEvent(SimpleSSD::EventFunction func) {
+  std::string name("SimpleSSD_Event_");
+
+  name += std::to_string(counter++);
+
+  auto iter = eventList.insert(
+      {counter, EventFunctionWrapper([func]() { func(curTick()); }, name)});
+
+  if (!iter.second) {
+    SimpleSSD::panic("Fail to allocate event");
+  }
+
+  return counter;
+}
+
+void NVMeInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
+  auto iter = eventList.find(eid);
+
+  if (iter != eventList.end()) {
+    if (iter->second.scheduled()) {
+      reschedule(iter->second, tick);
+    }
+    else {
+      schedule(iter->second, tick);
+    }
+  }
+  else {
+    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
+  }
+}
+
+void NVMeInterface::descheduleEvent(SimpleSSD::Event eid) {
+  auto iter = eventList.find(eid);
+
+  if (iter != eventList.end()) {
+    if (iter->second.scheduled()) {
+      deschedule(iter->second);
+    }
+  }
+  else {
+    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
+  }
+}
+
+bool NVMeInterface::isScheduled(SimpleSSD::Event eid) {
+  bool ret = false;
+  auto iter = eventList.find(eid);
+
+  if (iter != eventList.end()) {
+    ret = iter->second.scheduled();
+  }
+  else {
+    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
+  }
+
+  return ret;
+}
+
+void NVMeInterface::deallocateEvent(SimpleSSD::Event eid) {
+  auto iter = eventList.find(eid);
+
+  if (iter != eventList.end()) {
+    eventList.erase(iter);
+  }
+  else {
+    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
   }
 }
 

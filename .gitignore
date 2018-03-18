@@ -29,6 +29,3 @@ m5out
 .clang_complete
 .clang-format
 *.cfg
-*.sh
-scripts/
-compile_flags.txt

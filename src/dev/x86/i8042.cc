@@ -398,6 +398,8 @@ X86ISA::I8042::write(PacketPtr pkt)
             panic_if(bits(data, 0) != 1, "Reset bit should be 1");
             // Safe to ignore otherwise
             break;
+          case WriteOutputPort:
+            break;
           default:
             panic("Data written for unrecognized "
                     "command %#02x\n", lastCommand);

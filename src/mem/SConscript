@@ -74,9 +74,6 @@ if env['TARGET_ISA'] != 'null':
     Source('se_translating_port_proxy.cc')
     Source('page_table.cc')
 
-if env['TARGET_ISA'] == 'x86':
-    DebugFlag('SystemXBar')
-
 if env['HAVE_DRAMSIM']:
     SimObject('DRAMSim2.py')
     Source('dramsim2_wrapper.cc')
