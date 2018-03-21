@@ -31,9 +31,6 @@
 #include "dev/storage/simplessd/hil/nvme/def.hh"
 #include "dev/storage/simplessd/sim/log.hh"
 #include "dev/storage/simplessd/util/algorithm.hh"
-#include "dev/storage/simplessd/util/interface.hh"
-
-#define STAT_UPDATE_PERIOD  1000000
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p),
@@ -46,7 +43,8 @@ NVMeInterface::NVMeInterface(Params *p)
       oldInterruptStatus(0),
       mode(INTERRUPT_PIN),
       statUpdateEvent([this]() { updateStats(); }, name()),
-      pStats(nullptr) {
+      pStats(nullptr),
+      counter(0) {
   SimpleSSD::setSimulator(this);
 
   SimpleSSD::initLogSystem(std::cout, std::cerr);
@@ -54,6 +52,11 @@ NVMeInterface::NVMeInterface(Params *p)
   if (!conf.init(configPath)) {
     SimpleSSD::panic("Failed to read SimpleSSD configuration");
   }
+
+  pcieGen = (SimpleSSD::PCIExpress::PCIE_GEN)conf.readInt(
+      SimpleSSD::CONFIG_NVME, SimpleSSD::HIL::NVMe::NVME_PCIE_GEN);
+  pcieLane = (uint8_t)conf.readUint(SimpleSSD::CONFIG_NVME,
+                                    SimpleSSD::HIL::NVMe::NVME_PCIE_LANE);
 
   pController = new SimpleSSD::HIL::NVMe::Controller(this, conf);
 }
@@ -397,9 +400,8 @@ void NVMeInterface::submitDMARead() {
   dmaReadPending = true;
 
   iter.beginAt = curTick();
-  iter.finishedAt =
-      iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
-                         SimpleSSD::PCIExpress::PCIE_2_X, 4, iter.size);
+  iter.finishedAt = iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
+                                       pcieGen, pcieLane, iter.size);
 
   if (iter.buffer) {
     DmaDevice::dmaRead(pciToDma(iter.addr), iter.size, &dmaReadEvent,
@@ -450,9 +452,9 @@ void NVMeInterface::submitDMAWrite() {
   dmaWritePending = true;
 
   iter.beginAt = curTick();
-  iter.finishedAt =
-      iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
-                         SimpleSSD::PCIExpress::PCIE_2_X, 4, iter.size);
+  iter.finishedAt = iter.beginAt + SimpleSSD::PCIExpress::calculateDelay(
+                                       pcieGen, pcieLane, iter.size);
+
   if (iter.buffer) {
     DmaDevice::dmaWrite(pciToDma(iter.addr), iter.size, &dmaWriteEvent,
                         iter.buffer);
@@ -605,6 +607,10 @@ void NVMeInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
 
   if (iter != eventList.end()) {
     if (iter->second.scheduled()) {
+      SimpleSSD::warn("Event %" PRIu64 " rescheduled from %" PRIu64
+                      " to %" PRIu64,
+                      eid, iter->second.when(), tick);
+
       reschedule(iter->second, tick);
     }
     else {

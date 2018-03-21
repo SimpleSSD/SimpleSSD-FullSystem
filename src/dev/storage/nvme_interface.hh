@@ -26,35 +26,12 @@
 
 #include "dev/io_device.hh"
 #include "dev/pci/device.hh"
+#include "dev/storage/def.hh"
 #include "dev/storage/simplessd/hil/nvme/interface.hh"
 #include "dev/storage/simplessd/sim/config_reader.hh"
 #include "dev/storage/simplessd/sim/simulator.hh"
+#include "dev/storage/simplessd/util/interface.hh"
 #include "params/NVMeInterface.hh"
-
-typedef enum _INTERRUPT_MODE {
-  INTERRUPT_PIN,
-  INTERRUPT_MSI,
-  INTERRUPT_MSIX
-} INTERRUPT_MODE;
-
-typedef struct _DMAEntry {
-  uint64_t beginAt;
-  uint64_t finishedAt;
-  uint64_t addr;
-  uint64_t size;
-  uint8_t *buffer;
-  void *context;
-  SimpleSSD::DMAFunction &func;
-
-  _DMAEntry(SimpleSSD::DMAFunction &f)
-      : beginAt(0),
-        finishedAt(0),
-        addr(0),
-        size(0),
-        buffer(nullptr),
-        context(nullptr),
-        func(f) {}
-} DMAEntry;
 
 class NVMeInterface : public PciDevice,
                       public SimpleSSD::HIL::NVMe::Interface,
@@ -65,6 +42,10 @@ class NVMeInterface : public PciDevice,
 
   Addr registerTableBaseAddress;
   int registerTableSize;
+
+  // PCI Express
+  SimpleSSD::PCIExpress::PCIE_GEN pcieGen;
+  uint8_t pcieLane;
 
   // DMA scheduling
   EventFunctionWrapper dmaReadEvent;
@@ -95,15 +76,15 @@ class NVMeInterface : public PciDevice,
   EventFunctionWrapper statUpdateEvent;
   Stats::Scalar *pStats;
 
+  // Simulator
+  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
+  SimpleSSD::Event counter;
+
   void writeInterrupt(Addr, size_t, uint8_t *);
   void dmaReadDone();
   void submitDMARead();
   void dmaWriteDone();
   void submitDMAWrite();
-
-  // Simulator
-  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
-  SimpleSSD::Event counter;
 
  public:
   typedef NVMeInterfaceParams Params;

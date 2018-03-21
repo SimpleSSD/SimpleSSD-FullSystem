@@ -18,6 +18,7 @@ See LICENSE file for more details about the license.
 ### GPLv3 License
 Following newly added files by CAMELab are GPLv3 licensed.
 See LICENSE_GPLv3 for more details about the license.
+ - src/dev/storage/def.hh
  - src/dev/storage/NVMe.py
  - src/dev/storage/nvme_interface.cc
  - src/dev/storage/nvme_interface.hh
