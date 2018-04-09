@@ -291,6 +291,14 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
     if simplessd['interface'] == 'nvme':
         self.pci_nvme = NVMeInterface(SSDConfig=simplessd['config'])
         pci_devices.append(self.pci_nvme)
+    elif simplessd['interface'] == 'ufs':
+        self.realview.ufs.SSDConfig = simplessd['config']
+    elif simplessd['interface'] == 'ocssd':
+        self.pci_nvme = OCSSDInterface(SSDConfig=simplessd['config'])
+        pci_devices.append(self.pci_nvme)
+    elif simplessd['interface'] == 'sata':
+        self.pci_sata = SATAInterface(SSDConfig=simplessd['config'])
+        pci_devices.append(self.pci_sata)
     else:
         fatal(
             "Undefined SimpleSSD interface {}!".format(simplessd['interface']))
@@ -586,9 +594,19 @@ def makeX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, self=None,
         self.pc.south_bridge.ide.disks = [disk0]  # [disk0, disk2]
 
     if simplessd['interface'] == 'nvme':
-        self.pc.south_bridge.nvme.SSDConfig = simplessd['config']
-        self.pc.south_bridge.nvme.InterruptLine = 17
-        self.pc.south_bridge.nvme.InterruptPin = 1
+        self.pc.nvme.SSDConfig = simplessd['config']
+        self.pc.nvme.InterruptLine = 17
+        self.pc.nvme.InterruptPin = 1
+    elif simplessd['interface'] == 'ocssd':
+        self.pc.nvme.SSDConfig = simplessd['config']
+        self.pc.nvme.VendorID = 0x1D1D
+        self.pc.nvme.DeviceID = 0x1F1F
+        self.pc.nvme.InterruptLine = 17
+        self.pc.nvme.InterruptPin = 1
+    elif simplessd['interface'] == 'sata':
+        self.pc.south_bridge.sata.SSDConfig = simplessd['config']
+        self.pc.south_bridge.sata.InterruptLine = 18
+        self.pc.south_bridge.sata.InterruptPin = 1
     else:
         fatal(
             "Undefined SimpleSSD interface {}!".format(simplessd['interface']))
@@ -641,8 +659,17 @@ def makeX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, self=None,
             source_bus_irq = 0 + (5 << 2),
             dest_io_apic_id = io_apic.id,
             dest_io_apic_intin = 17)
+    pci_dev6_inta = X86IntelMPIOIntAssignment(
+            interrupt_type = 'INT',
+            polarity = 'ConformPolarity',
+            trigger = 'ConformTrigger',
+            source_bus_id = 0,
+            source_bus_irq = 0 + (6 << 2),
+            dest_io_apic_id = io_apic.id,
+            dest_io_apic_intin = 18)
     base_entries.append(pci_dev4_inta)
     base_entries.append(pci_dev5_inta)
+    base_entries.append(pci_dev6_inta)
     def assignISAInt(irq, apicPin):
         assign_8259_to_apic = X86IntelMPIOIntAssignment(
                 interrupt_type = 'ExtInt',
@@ -674,7 +701,7 @@ def makeLinuxX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, Ruby=False,
     self = LinuxX86System()
 
     # Build up the x86 system and then specialize it for Linux
-    makeX86System(mem_mode, numCPUs, simplessd, mdesc, self, Ruby)
+    makeX86System(mem_mode, simplessd, numCPUs, mdesc, self, Ruby)
 
     # We assume below that there's at least 1MB of memory. We'll require 2
     # just to avoid corner cases.

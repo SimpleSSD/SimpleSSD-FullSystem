@@ -35,7 +35,7 @@ from I8237 import I8237
 from I8254 import I8254
 from I8259 import I8259
 from Ide import IdeController
-from NVMe import NVMeInterface
+from SATA import SATAInterface
 from PcSpeaker import PcSpeaker
 from X86IntPin import X86IntLine
 from m5.SimObject import SimObject
@@ -87,8 +87,7 @@ class SouthBridge(SimObject):
     ide.InterruptPin = 1
     ide.LegacyIOBase = x86IOAddress(0)
 
-    # NVMe Interface
-    nvme = NVMeInterface(pci_func=0, pci_dev=5, pci_bus=0)
+    sata = SATAInterface(pci_func=0, pci_dev=6, pci_bus=0)
 
     def attachIO(self, bus, dma_ports):
         # Route interupt signals
@@ -110,11 +109,11 @@ class SouthBridge(SimObject):
         self.cmos.pio = bus.master
         self.dma1.pio = bus.master
         self.ide.pio = bus.master
-        self.nvme.pio = bus.master
         if dma_ports.count(self.ide.dma) == 0:
-                self.ide.dma = bus.slave
-        if dma_ports.count(self.nvme.dma) == 0:
-                self.nvme.dma = bus.slave
+            self.ide.dma = bus.slave
+        self.sata.pio = bus.master
+        if dma_ports.count(self.sata.dma) == 0:
+            self.sata.dma = bus.slave
         self.keyboard.pio = bus.master
         self.pic1.pio = bus.master
         self.pic2.pio = bus.master

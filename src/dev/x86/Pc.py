@@ -35,6 +35,7 @@ from SouthBridge import SouthBridge
 from Terminal import Terminal
 from Uart import Uart8250
 from PciHost import GenericPciHost
+from NVMe import NVMeInterface
 
 def x86IOAddress(port):
     IO_address_space_base = 0x8000000000000000
@@ -75,6 +76,9 @@ class Pc(Platform):
     # A device to catch accesses to the non-existant floppy controller.
     fake_floppy = IsaFake(pio_addr=x86IOAddress(0x3f2), pio_size=2)
 
+    # NVMe Interface
+    nvme = NVMeInterface(pci_func=0, pci_dev=5, pci_bus=0)
+
     def attachIO(self, bus, dma_ports = []):
         self.south_bridge.attachIO(bus, dma_ports)
         self.i_dont_exist1.pio = bus.master
@@ -86,3 +90,6 @@ class Pc(Platform):
         self.fake_com_4.pio = bus.master
         self.fake_floppy.pio = bus.master
         self.pci_host.pio = bus.default
+        self.nvme.pio = bus.master
+        if dma_ports.count(self.nvme.dma) == 0:
+                self.nvme.dma = bus.slave

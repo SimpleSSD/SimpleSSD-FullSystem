@@ -250,6 +250,14 @@ def build_test_system(np, simplessd):
 
         MemConfig.config_mem(options, test_sys)
 
+        if buildEnv['TARGET_ISA'] == "x86":
+            lapics = []
+
+            for i in xrange(np):
+                lapics.append(test_sys.cpu[i].interrupts[0])
+
+            test_sys.membus.lapics = lapics
+
     return test_sys
 
 def build_drive_system(np):

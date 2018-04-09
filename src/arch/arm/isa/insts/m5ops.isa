@@ -587,10 +587,13 @@ let {{
 
 
     m5tickCode = '''
-                    PseudoInst::getTick(
+                    uint64_t ret = PseudoInst::getTick(
                       xc->tcBase(),
                       R0
-                    );'''
+                    );
+                    R0 = ret & 0xFFFFFFFF;
+                    R1 = ret >> 32;
+		    '''
 
     m5tickIop = InstObjParams("m5tick", "M5tick64", "PredOp",
                               { "code": m5tickCode64,
@@ -619,7 +622,7 @@ let {{
                     PseudoInst::print(
                       xc->tcBase(),
                       R0,
-                      join32to64(R2, R1)
+                      join32to64(R3, R2)
                     );'''
 
     m5printIop = InstObjParams("m5print", "M5print64", "PredOp",

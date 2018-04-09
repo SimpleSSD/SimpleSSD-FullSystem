@@ -100,3 +100,7 @@ class NVMeInterface(PciDevice):
     BAR0Size = '8192B'  # 8KB (512 queue pairs)
     BAR4Size = '8192B'  # 8KB for MSI-X 512 vectors
     BAR5Size = '4096B'  # 4KB (64B) for MSI-X 512 vectors
+
+class OCSSDInterface(NVMeInterface):
+    VendorID = 0x1D1D
+    DeviceID = 0x1F1F

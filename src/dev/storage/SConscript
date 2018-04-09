@@ -50,10 +50,14 @@ if env['TARGET_ISA'] == 'null':
 # Controllers
 SimObject('Ide.py')
 SimObject('NVMe.py')
+SimObject('SATA.py')
 
 Source('ide_ctrl.cc')
 Source('ide_disk.cc')
+
+Source('def.cc')
 Source('nvme_interface.cc')
+Source('sata_interface.cc')
 
 DebugFlag('IdeCtrl')
 DebugFlag('IdeDisk')
@@ -70,6 +74,10 @@ DebugFlag('DiskImageWrite')
 DebugFlag('SimpleDisk')
 DebugFlag('SimpleDiskData')
 
-
 CompoundFlag('DiskImageAll', [ 'DiskImageRead', 'DiskImageWrite' ])
 CompoundFlag('IdeAll', [ 'IdeCtrl', 'IdeDisk' ])
+
+if env['TARGET_ISA'] == 'arm':
+    SimObject('UFS.py')
+
+    Source('ufs_interface.cc')

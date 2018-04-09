@@ -130,6 +130,14 @@
 		clock-names = "apb_pclk";
 	};
 
+	ufs@2e000000 {
+		compatible = "snps,g210-tc-6.00-40bit",
+		             "snps,dwc-ufshcd-1.40a",
+		             "jedec,ufs-2.0";
+		reg = <0x0 0x2e000000 0x0 0x10000>;
+		interrupts = <0 17 4>;
+	};
+
 	v2m_clk24mhz: clk24mhz {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;

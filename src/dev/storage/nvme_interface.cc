@@ -29,8 +29,8 @@
 
 #include "dev/storage/simplessd/hil/nvme/controller.hh"
 #include "dev/storage/simplessd/hil/nvme/def.hh"
-#include "dev/storage/simplessd/sim/log.hh"
 #include "dev/storage/simplessd/util/algorithm.hh"
+#include "dev/storage/simplessd/util/simplessd.hh"
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p),
@@ -45,13 +45,13 @@ NVMeInterface::NVMeInterface(Params *p)
       statUpdateEvent([this]() { updateStats(); }, name()),
       pStats(nullptr),
       counter(0) {
-  SimpleSSD::setSimulator(this);
+  if (p->SSDConfig.size() == 0) {
+    pController = nullptr;
 
-  SimpleSSD::initLogSystem(std::cout, std::cerr);
-
-  if (!conf.init(configPath)) {
-    SimpleSSD::panic("Failed to read SimpleSSD configuration");
+    return;
   }
+
+  conf = initSimpleSSDEngine(this, std::cout, std::cerr, configPath);
 
   pcieGen = (SimpleSSD::PCIExpress::PCIE_GEN)conf.readInt(
       SimpleSSD::CONFIG_NVME, SimpleSSD::HIL::NVMe::NVME_PCIE_GEN);
@@ -59,6 +59,8 @@ NVMeInterface::NVMeInterface(Params *p)
                                     SimpleSSD::HIL::NVMe::NVME_PCIE_LANE);
 
   pController = new SimpleSSD::HIL::NVMe::Controller(this, conf);
+
+  registerExitCallback(new ExitCallback());
 }
 
 NVMeInterface::~NVMeInterface() {
@@ -67,6 +69,12 @@ NVMeInterface::~NVMeInterface() {
 }
 
 Tick NVMeInterface::readConfig(PacketPtr pkt) {
+  if (!pController) {
+    pkt->makeAtomicResponse();
+
+    return configDelay;
+  }
+
   int offset = pkt->getAddr() & PCI_CONFIG_SIZE;
   int size = pkt->getSize();
 
@@ -121,6 +129,12 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
 }
 
 Tick NVMeInterface::writeConfig(PacketPtr pkt) {
+  if (!pController) {
+    pkt->makeAtomicResponse();
+
+    return configDelay;
+  }
+
   int offset = pkt->getAddr() & PCI_CONFIG_SIZE;
   int size = pkt->getSize();
   uint32_t val = 0;
@@ -257,6 +271,12 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
 }
 
 Tick NVMeInterface::read(PacketPtr pkt) {
+  if (!pController) {
+    pkt->makeAtomicResponse();
+
+    return configDelay;
+  }
+
   Addr addr = pkt->getAddr();
   int size = pkt->getSize();
   uint8_t *buffer = pkt->getPtr<uint8_t>();
@@ -293,6 +313,12 @@ Tick NVMeInterface::read(PacketPtr pkt) {
 }
 
 Tick NVMeInterface::write(PacketPtr pkt) {
+  if (!pController) {
+    pkt->makeAtomicResponse();
+
+    return configDelay;
+  }
+
   Addr addr = pkt->getAddr();
   int size = pkt->getSize();
   uint8_t *buffer = pkt->getPtr<uint8_t>();
@@ -362,6 +388,12 @@ void NVMeInterface::writeInterrupt(Addr addr, size_t size, uint8_t *data) {
 
 void NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
                             SimpleSSD::DMAFunction &func, void *context) {
+  if (size == 0) {
+    SimpleSSD::warn("nvme_interface: zero-size DMA read request. Ignore.");
+
+    return;
+  }
+
   dmaReadQueue.push(DMAEntry(func));
 
   auto &iter = dmaReadQueue.back();
@@ -414,6 +446,12 @@ void NVMeInterface::submitDMARead() {
 
 void NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
                              SimpleSSD::DMAFunction &func, void *context) {
+  if (size == 0) {
+    SimpleSSD::warn("nvme_interface: zero-size DMA write request. Ignore.");
+
+    return;
+  }
+
   dmaWriteQueue.push(DMAEntry(func));
 
   auto &iter = dmaWriteQueue.back();
@@ -544,11 +582,16 @@ void NVMeInterface::unserialize(CheckpointIn &cp) {
 }
 
 void NVMeInterface::regStats() {
-  std::vector<SimpleSSD::Stats> list;
-
   PciDevice::regStats();
 
+  if (!pController) {
+    return;
+  }
+
+  std::vector<SimpleSSD::Stats> list;
+
   pController->getStatList(list, "");
+  SimpleSSD::getCPUStatList(list, "cpu");
 
   if (list.size() > 0) {
     pStats = new Stats::Scalar[list.size()]();
@@ -562,22 +605,32 @@ void NVMeInterface::regStats() {
 void NVMeInterface::resetStats() {
   PciDevice::resetStats();
 
+  if (!pController) {
+    return;
+  }
+
   pController->resetStatValues();
+  SimpleSSD::resetCPUStatValues();
 
   updateStats();
-
-  if (statUpdateEvent.scheduled()) {
-    deschedule(statUpdateEvent);
-  }
 }
 
 void NVMeInterface::updateStats() {
+  if (!pController) {
+    return;
+  }
+
   std::vector<double> values;
 
   pController->getStatValues(values);
+  SimpleSSD::getCPUStatValues(values);
 
   for (uint32_t i = 0; i < values.size(); i++) {
     pStats[i] = values[i];
+  }
+
+  if (statUpdateEvent.scheduled()) {
+    deschedule(statUpdateEvent);
   }
 
   schedule(statUpdateEvent, curTick() + STAT_UPDATE_PERIOD);

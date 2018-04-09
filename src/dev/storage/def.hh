@@ -22,6 +22,7 @@
 
 #include <cinttypes>
 
+#include "base/callback.hh"
 #include "dev/storage/simplessd/sim/dma_interface.hh"
 
 #define STAT_UPDATE_PERIOD 1000000
@@ -39,7 +40,7 @@ typedef struct _DMAEntry {
   uint64_t size;
   uint8_t *buffer;
   void *context;
-  SimpleSSD::DMAFunction &func;
+  SimpleSSD::DMAFunction func;
 
   _DMAEntry(SimpleSSD::DMAFunction &f)
       : beginAt(0),
@@ -50,5 +51,13 @@ typedef struct _DMAEntry {
         context(nullptr),
         func(f) {}
 } DMAEntry;
+
+class ExitCallback : public Callback {
+ protected:
+  void autoDestruct() override;
+
+ public:
+  void process() override;
+};
 
 #endif

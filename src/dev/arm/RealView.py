@@ -49,6 +49,7 @@ from ClockDomain import ClockDomain
 from VoltageDomain import VoltageDomain
 from Device import BasicPioDevice, PioDevice, IsaFake, BadAddr, DmaDevice
 from PciHost import *
+from UFS import *
 from Ethernet import NSGigE, IGbE_igb, IGbE_e1000
 from Ide import *
 from Platform import Platform
@@ -1080,6 +1081,7 @@ Interrupts:
         46   : Reserved (CLCD)
         47   : Reserved (Ethernet)
         48   : Reserved (USB)
+        49   : UFS Host Controller
     95-255: On-chip interrupt sources (we use these for
             gem5-specific devices, SPIs)
          95    : HDLCD
@@ -1120,10 +1122,12 @@ Interrupts:
     hdlcd  = HDLcd(pxl_clk=dcc.osc_pxl,
                    pio_addr=0x2b000000, int_num=95)
 
+    ufs = UFSInterface(pio_addr=0x2e000000, int_num=49)
+
     def _on_chip_devices(self):
         return [
             self.gic, self.vgic, self.gicv2m,
-            self.hdlcd,
+            self.hdlcd, self.ufs,
             self.generic_timer,
         ]
 
