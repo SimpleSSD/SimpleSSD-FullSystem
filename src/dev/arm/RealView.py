@@ -1,4 +1,4 @@
-# Copyright (c) 2009-2017 ARM Limited
+# Copyright (c) 2009-2018 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -63,6 +63,7 @@ from ClockDomain import SrcClockDomain
 from SubSystem import SubSystem
 from Graphics import ImageFormat
 from ClockedObject import ClockedObject
+from PS2 import *
 
 # Platforms with KVM support should generally use in-kernel GIC
 # emulation. Use a GIC model that automatically switches between
@@ -466,10 +467,10 @@ class PL031(AmbaIntDevice):
 class Pl050(AmbaIntDevice):
     type = 'Pl050'
     cxx_header = "dev/arm/kmi.hh"
-    vnc = Param.VncInput(Parent.any, "Vnc server for remote frame buffer display")
-    is_mouse = Param.Bool(False, "Is this interface a mouse, if not a keyboard")
     int_delay = '1us'
     amba_id = 0x00141050
+
+    ps2 = Param.PS2Device("PS/2 device")
 
     def generateDeviceTree(self, state):
         node = self.generateBasicPioDeviceNode(state, 'kmi', self.pio_addr,
@@ -581,9 +582,11 @@ class RealView(Platform):
         self._attach_io(self._off_chip_devices(), *args, **kwargs)
 
     def setupBootLoader(self, mem_bus, cur_sys, loc):
-        self.nvmem = SimpleMemory(range = AddrRange('2GB', size = '64MB'),
-                                  conf_table_reported = False)
-        self.nvmem.port = mem_bus.master
+        cur_sys.bootmem = SimpleMemory(
+            range = AddrRange('2GB', size = '64MB'),
+            conf_table_reported = False)
+        if mem_bus is not None:
+            cur_sys.bootmem.port = mem_bus.master
         cur_sys.boot_loader = loc('boot.arm')
         cur_sys.atags_addr = 0x100
         cur_sys.load_offset = 0
@@ -623,8 +626,8 @@ class RealViewPBX(RealView):
     local_cpu_timer = CpuLocalTimer(int_num_timer=29, int_num_watchdog=30,
                                     pio_addr=0x1f000600)
     clcd = Pl111(pio_addr=0x10020000, int_num=55)
-    kmi0   = Pl050(pio_addr=0x10006000, int_num=52)
-    kmi1   = Pl050(pio_addr=0x10007000, int_num=53, is_mouse=True)
+    kmi0   = Pl050(pio_addr=0x10006000, int_num=52, ps2=PS2Keyboard())
+    kmi1   = Pl050(pio_addr=0x10007000, int_num=53, ps2=PS2TouchKit())
     a9scu  = A9SCU(pio_addr=0x1f000000)
     cf_ctrl = IdeController(disks=[], pci_func=0, pci_dev=7, pci_bus=2,
                             io_shift = 1, ctrl_offset = 2, Command = 0x1,
@@ -752,8 +755,8 @@ class RealViewEB(RealView):
     timer0 = Sp804(int_num0=36, int_num1=36, pio_addr=0x10011000)
     timer1 = Sp804(int_num0=37, int_num1=37, pio_addr=0x10012000)
     clcd   = Pl111(pio_addr=0x10020000, int_num=23)
-    kmi0   = Pl050(pio_addr=0x10006000, int_num=20)
-    kmi1   = Pl050(pio_addr=0x10007000, int_num=21, is_mouse=True)
+    kmi0   = Pl050(pio_addr=0x10006000, int_num=20, ps2=PS2Keyboard())
+    kmi1   = Pl050(pio_addr=0x10007000, int_num=21, ps2=PS2TouchKit())
 
     l2x0_fake     = IsaFake(pio_addr=0x1f002000, pio_size=0xfff, warn_access="1")
     flash_fake    = IsaFake(pio_addr=0x40000000, pio_size=0x20000000-1,
@@ -903,8 +906,8 @@ class VExpress_EMM(RealView):
     timer0 = Sp804(int_num0=34, int_num1=34, pio_addr=0x1C110000, clock0='1MHz', clock1='1MHz')
     timer1 = Sp804(int_num0=35, int_num1=35, pio_addr=0x1C120000, clock0='1MHz', clock1='1MHz')
     clcd   = Pl111(pio_addr=0x1c1f0000, int_num=46)
-    kmi0   = Pl050(pio_addr=0x1c060000, int_num=44)
-    kmi1   = Pl050(pio_addr=0x1c070000, int_num=45, is_mouse=True)
+    kmi0   = Pl050(pio_addr=0x1c060000, int_num=44, ps2=PS2Keyboard())
+    kmi1   = Pl050(pio_addr=0x1c070000, int_num=45, ps2=PS2TouchKit())
     cf_ctrl = IdeController(disks=[], pci_func=0, pci_dev=0, pci_bus=2,
                             io_shift = 2, ctrl_offset = 2, Command = 0x1,
                             BAR0 = 0x1C1A0000, BAR0Size = '256B',
@@ -972,9 +975,10 @@ class VExpress_EMM(RealView):
         self.gicv2m.frames = [Gicv2mFrame(spi_base=256, spi_len=64, addr=0x2C1C0000)]
 
     def setupBootLoader(self, mem_bus, cur_sys, loc):
-        self.nvmem = SimpleMemory(range = AddrRange('64MB'),
-                                  conf_table_reported = False)
-        self.nvmem.port = mem_bus.master
+        cur_sys.bootmem = SimpleMemory(range = AddrRange('64MB'),
+                                       conf_table_reported = False)
+        if mem_bus is not None:
+            cur_sys.bootmem.port = mem_bus.master
         if not cur_sys.boot_loader:
             cur_sys.boot_loader = loc('boot_emm.arm')
         cur_sys.atags_addr = 0x8000000
@@ -989,14 +993,14 @@ class VExpress_EMM64(VExpress_EMM):
         pci_pio_base=0x2f000000)
 
     def setupBootLoader(self, mem_bus, cur_sys, loc):
-        self.nvmem = SimpleMemory(range=AddrRange(0, size='64MB'),
-                                  conf_table_reported=False)
-        self.nvmem.port = mem_bus.master
+        cur_sys.bootmem = SimpleMemory(range=AddrRange(0, size='64MB'),
+                                       conf_table_reported=False)
+        if mem_bus is not None:
+            cur_sys.bootmem.port = mem_bus.master
         if not cur_sys.boot_loader:
             cur_sys.boot_loader = loc('boot_emm.arm64')
         cur_sys.atags_addr = 0x8000000
         cur_sys.load_offset = 0x80000000
-
 
 class VExpress_GEM5_V1(RealView):
     """
@@ -1137,8 +1141,8 @@ Interrupts:
 
     uart0 = Pl011(pio_addr=0x1c090000, int_num=37)
 
-    kmi0 = Pl050(pio_addr=0x1c060000, int_num=44)
-    kmi1 = Pl050(pio_addr=0x1c070000, int_num=45, is_mouse=True)
+    kmi0 = Pl050(pio_addr=0x1c060000, int_num=44, ps2=PS2Keyboard())
+    kmi1 = Pl050(pio_addr=0x1c070000, int_num=45, ps2=PS2TouchKit())
 
     rtc = PL031(pio_addr=0x1c170000, int_num=36)
 
@@ -1168,9 +1172,10 @@ Interrupts:
         self._attach_device(device, *args, **kwargs)
 
     def setupBootLoader(self, mem_bus, cur_sys, loc):
-        self.nvmem = SimpleMemory(range=AddrRange(0, size='64MB'),
-                                  conf_table_reported=False)
-        self.nvmem.port = mem_bus.master
+        cur_sys.bootmem = SimpleMemory(range=AddrRange(0, size='64MB'),
+                                       conf_table_reported=False)
+        if mem_bus is not None:
+            cur_sys.bootmem.port = mem_bus.master
         if not cur_sys.boot_loader:
             cur_sys.boot_loader = [ loc('boot_emm.arm64'), loc('boot_emm.arm') ]
         cur_sys.atags_addr = 0x8000000

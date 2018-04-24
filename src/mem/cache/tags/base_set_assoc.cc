@@ -52,15 +52,13 @@
 #include "base/intmath.hh"
 #include "sim/core.hh"
 
-using namespace std;
-
 BaseSetAssoc::BaseSetAssoc(const Params *p)
     :BaseTags(p), assoc(p->assoc), allocAssoc(p->assoc),
      blks(p->size / p->block_size),
-     dataBlks(new uint8_t[p->size]), // Allocate data storage in one big chunk
      numSets(p->size / (p->block_size * p->assoc)),
      sequentialAccess(p->sequential_access),
-     sets(p->size / (p->block_size * p->assoc))
+     sets(p->size / (p->block_size * p->assoc)),
+     replacementPolicy(p->replacement_policy)
 {
     // Check parameters
     if (blkSize < 4 || !isPowerOf2(blkSize)) {
@@ -183,4 +181,10 @@ BaseSetAssoc::computeStats()
             ageTaskId[blks[i].task_id][age_index]++;
         }
     }
+}
+
+BaseSetAssoc *
+BaseSetAssocParams::create()
+{
+    return new BaseSetAssoc(this);
 }

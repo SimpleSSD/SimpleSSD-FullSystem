@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2017 ARM Limited
- * All rights reserved.
+ * Copyright (c) 2010, 2017-2018 ARM Limited
+ * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
  * not be construed as granting a license to any other intellectual
@@ -10,10 +10,6 @@
  * terms below provided that you ensure that this notice is replicated
  * unmodified and in its entirety in all distributions of the software,
  * modified or unmodified, in source code or in binary form.
- *
- * Copyright (c) 2014 The Regents of The University of Michigan
- * Copyright (c) 2016 ARM Limited
- * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -38,68 +34,60 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Authors: Anthony Gutierrez
+ * Authors: Andreas Sandberg
  */
 
-/**
- * @file
- * Definitions of a random replacement tag store.
- */
+#ifndef __DEV_PS2_TOUCHKIT_HH__
+#define __DEV_PS2_TOUCHKIT_HH__
 
-#include "mem/cache/tags/random_repl.hh"
+#include "base/vnc/vncinput.hh"
+#include "dev/ps2/device.hh"
 
-#include "base/random.hh"
-#include "debug/CacheRepl.hh"
-#include "mem/cache/base.hh"
+struct PS2TouchKitParams;
 
-RandomRepl::RandomRepl(const Params *p)
-    : BaseSetAssoc(p)
-
+class PS2TouchKit : public PS2Device, public VncMouse
 {
-}
+  protected:
+    enum PS2Commands {
+        TpReadId = 0xE1,
+        TouchKitDiag = 0x0A,
+    };
 
-CacheBlk*
-RandomRepl::accessBlock(Addr addr, bool is_secure, Cycles &lat)
-{
-    return BaseSetAssoc::accessBlock(addr, is_secure, lat);
-}
+    enum TKCommands {
+        TouchKitActive = 'A',
+        TouchKitFWRev = 'D',
+        TouchKitCtrlType = 'E',
+    };
 
-CacheBlk*
-RandomRepl::findVictim(Addr addr)
-{
-    CacheBlk *blk = BaseSetAssoc::findVictim(addr);
-    unsigned set = extractSet(addr);
+  public:
+    PS2TouchKit(const PS2TouchKitParams *p);
 
-    // if all blocks are valid, pick a replacement at random
-    if (blk && blk->isValid()) {
-        // find a random index within the bounds of the set
-        int idx = random_mt.random<int>(0, assoc - 1);
-        blk = sets[set].blks[idx];
-        // Enforce allocation limit
-        while (blk->way >= allocAssoc) {
-            idx = (idx + 1) % assoc;
-            blk = sets[set].blks[idx];
-        }
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-        assert(idx < assoc);
-        assert(idx >= 0);
-        assert(blk->way < allocAssoc);
+  protected: // PS2Device
+    bool recv(const std::vector<uint8_t> &data) override;
 
-        DPRINTF(CacheRepl, "set %x: selecting blk %x for replacement\n",
-                blk->set, regenerateBlkAddr(blk));
-    }
+  public: // VncMouse
+    void mouseAt(uint16_t x, uint16_t y, uint8_t buttons) override;
 
-    return blk;
-}
+  protected:
+    bool recvTouchKit(const std::vector<uint8_t> &data);
+    void sendTouchKit(const uint8_t *data, size_t size);
+    void sendTouchKit(uint8_t data) { sendTouchKit(&data, 1); }
 
-void
-RandomRepl::insertBlock(PacketPtr pkt, BlkType *blk)
-{
-    BaseSetAssoc::insertBlock(pkt, blk);
-}
+    /** The vnc server we're connected to (if any) */
+    VncInput *const vnc;
 
-RandomRepl*
-RandomReplParams::create()
-{
-    return new RandomRepl(this);
-}
+    /** Is the device enabled? */
+    bool enabled;
+
+    /**
+     * Has the driver enabled TouchKit mode?  The model suppresses
+     * touch event generation until this is true.
+     */
+    bool touchKitEnabled;
+};
+
+#endif // __DEV_PS2_TOUCHKIT_HH__
+

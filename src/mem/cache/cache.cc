@@ -416,7 +416,7 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         }
         // nothing else to do; writeback doesn't expect response
         assert(!pkt->needsResponse());
-        std::memcpy(blk->data, pkt->getConstPtr<uint8_t>(), blkSize);
+        pkt->writeDataToBlock(blk->data, blkSize);
         DPRINTF(Cache, "%s new state is %s\n", __func__, blk->print());
         incHitCount(pkt);
         // populate the time when the block will be ready to access.
@@ -477,7 +477,7 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         }
         // nothing else to do; writeback doesn't expect response
         assert(!pkt->needsResponse());
-        std::memcpy(blk->data, pkt->getConstPtr<uint8_t>(), blkSize);
+        pkt->writeDataToBlock(blk->data, blkSize);
         DPRINTF(Cache, "%s new state is %s\n", __func__, blk->print());
 
         incHitCount(pkt);
@@ -648,7 +648,7 @@ Cache::promoteWholeLineWrites(PacketPtr pkt)
     }
 }
 
-bool
+void
 Cache::recvTimingReq(PacketPtr pkt)
 {
     DPRINTF(CacheTags, "%s tags:\n%s\n", __func__, tags->print());
@@ -660,7 +660,7 @@ Cache::recvTimingReq(PacketPtr pkt)
         // @todo This should really enqueue the packet rather
         bool M5_VAR_USED success = memSidePort->sendTimingReq(pkt);
         assert(success);
-        return true;
+        return;
     }
 
     promoteWholeLineWrites(pkt);
@@ -730,7 +730,7 @@ Cache::recvTimingReq(PacketPtr pkt)
         // and we have already sent out any express snoops in the
         // section above to ensure all other copies in the system are
         // invalidated
-        return true;
+        return;
     }
 
     // anything that is merely forwarded pays for the forward latency and
@@ -976,8 +976,6 @@ Cache::recvTimingReq(PacketPtr pkt)
 
     if (next_pf_time != MaxTick)
         schedMemSideSendEvent(next_pf_time);
-
-    return true;
 }
 
 PacketPtr
@@ -1686,7 +1684,7 @@ Cache::writebackBlk(CacheBlk *blk)
     blk->status &= ~BlkDirty;
 
     pkt->allocate();
-    std::memcpy(pkt->getPtr<uint8_t>(), blk->data, blkSize);
+    pkt->setDataFromBlock(blk->data, blkSize);
 
     return pkt;
 }
@@ -1724,7 +1722,7 @@ Cache::writecleanBlk(CacheBlk *blk, Request::Flags dest, PacketId id)
     blk->status &= ~BlkDirty;
 
     pkt->allocate();
-    std::memcpy(pkt->getPtr<uint8_t>(), blk->data, blkSize);
+    pkt->setDataFromBlock(blk->data, blkSize);
 
     return pkt;
 }
@@ -1816,6 +1814,7 @@ Cache::invalidateVisitor(CacheBlk &blk)
 CacheBlk*
 Cache::allocateBlock(Addr addr, bool is_secure, PacketList &writebacks)
 {
+    // Find replacement victim
     CacheBlk *blk = tags->findVictim(addr);
 
     // It is valid to return nullptr if there is no victim
@@ -1826,10 +1825,10 @@ Cache::allocateBlock(Addr addr, bool is_secure, PacketList &writebacks)
         Addr repl_addr = tags->regenerateBlkAddr(blk);
         MSHR *repl_mshr = mshrQueue.findMatch(repl_addr, blk->isSecure());
         if (repl_mshr) {
-            // must be an outstanding upgrade request
+            // must be an outstanding upgrade or clean request
             // on a block we're about to replace...
-            assert(!blk->isWritable() || blk->isDirty());
-            assert(repl_mshr->needsWritable());
+            assert((!blk->isWritable() && repl_mshr->needsWritable()) ||
+                   repl_mshr->isCleaning());
             // too hard to replace block with transient state
             // allocation failed, block not inserted
             return nullptr;
@@ -1971,7 +1970,7 @@ Cache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
         assert(pkt->hasData());
         assert(pkt->getSize() == blkSize);
 
-        std::memcpy(blk->data, pkt->getConstPtr<uint8_t>(), blkSize);
+        pkt->writeDataToBlock(blk->data, blkSize);
     }
     // We pay for fillLatency here.
     blk->whenReady = clockEdge() + fillLatency * clockPeriod() +
@@ -2769,13 +2768,11 @@ Cache::CpuSidePort::recvTimingReq(PacketPtr pkt)
     assert(!cache->system->bypassCaches());
 
     // always let express snoop packets through if even if blocked
-    if (pkt->isExpressSnoop()) {
-        bool M5_VAR_USED bypass_success = cache->recvTimingReq(pkt);
-        assert(bypass_success);
+    if (pkt->isExpressSnoop() || tryTiming(pkt)) {
+        cache->recvTimingReq(pkt);
         return true;
     }
-
-    return tryTiming(pkt) && cache->recvTimingReq(pkt);
+    return false;
 }
 
 Tick
@@ -2802,6 +2799,7 @@ Cache*
 CacheParams::create()
 {
     assert(tags);
+    assert(replacement_policy);
 
     return new Cache(this);
 }

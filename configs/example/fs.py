@@ -154,8 +154,9 @@ def build_test_system(np, simplessd):
         test_sys.kvm_vm = KvmVM()
 
     if options.ruby:
+        bootmem = getattr(test_sys, 'bootmem', None)
         Ruby.create_system(options, True, test_sys, test_sys.iobus,
-                           test_sys._dma_ports)
+                           test_sys._dma_ports, bootmem)
 
         # Create a seperate clock domain for Ruby
         test_sys.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,

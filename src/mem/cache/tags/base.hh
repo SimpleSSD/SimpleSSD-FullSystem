@@ -54,6 +54,7 @@
 #include "base/callback.hh"
 #include "base/statistics.hh"
 #include "mem/cache/blk.hh"
+#include "mem/cache/replacement_policies/base.hh"
 #include "params/BaseTags.hh"
 #include "sim/clocked_object.hh"
 
@@ -92,6 +93,9 @@ class BaseTags : public ClockedObject
 
     /** the number of blocks in the cache */
     const unsigned numBlocks;
+
+    /** The data blocks, 1 per cache block. */
+    std::unique_ptr<uint8_t[]> dataBlks;
 
     // Statistics
     /**
@@ -249,11 +253,25 @@ class BaseTags : public ClockedObject
         occupancies[blk->srcMasterId]--;
     }
 
+    /**
+     * Find replacement victim based on address.
+     *
+     * @param addr Address to find a victim for.
+     * @return Cache block to be replaced.
+     */
+    virtual CacheBlk* findVictim(Addr addr) = 0;
+
     virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) = 0;
 
     virtual Addr extractTag(Addr addr) const = 0;
 
-    virtual void insertBlock(PacketPtr pkt, CacheBlk *blk) = 0;
+    /**
+     * Insert the new block into the cache and update stats.
+     *
+     * @param pkt Packet holding the address to update
+     * @param blk The block to update.
+     */
+    virtual void insertBlock(PacketPtr pkt, CacheBlk *blk);
 
     /**
      * Regenerate the block address.
@@ -262,8 +280,6 @@ class BaseTags : public ClockedObject
      * @return the block address.
      */
     virtual Addr regenerateBlkAddr(const CacheBlk* blk) const = 0;
-
-    virtual CacheBlk* findVictim(Addr addr) = 0;
 
     virtual int extractSet(Addr addr) const = 0;
 

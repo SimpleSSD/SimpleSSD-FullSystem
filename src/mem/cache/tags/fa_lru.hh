@@ -62,13 +62,11 @@
  */
 class FALRUBlk : public CacheBlk
 {
-public:
+  public:
     /** The previous block in LRU order. */
     FALRUBlk *prev;
     /** The next block in LRU order. */
     FALRUBlk *next;
-    /** Has this block been touched? */
-    bool isTouched;
 
     /**
      * A bit mask of the sizes of cache that this block is resident in.
@@ -124,9 +122,17 @@ class FALRU : public BaseTags
 
     /**
      * Move a cache block to the MRU position.
+     *
      * @param blk The block to promote.
      */
     void moveToHead(FALRUBlk *blk);
+
+    /**
+     * Move a cache block to the LRU position.
+     *
+     * @param blk The block to demote.
+     */
+    void moveToTail(FALRUBlk *blk);
 
     /**
      * Check to make sure all the cache boundaries are still where they should
@@ -153,8 +159,7 @@ class FALRU : public BaseTags
      * @}
      */
 
-public:
-
+  public:
     typedef FALRUParams Params;
 
     /**
@@ -204,12 +209,19 @@ public:
     CacheBlk* findBlock(Addr addr, bool is_secure) const override;
 
     /**
-     * Find a replacement block for the address provided.
-     * @param pkt The request to a find a replacement candidate for.
-     * @return The block to place the replacement in.
+     * Find replacement victim based on address.
+     *
+     * @param addr Address to find a victim for.
+     * @return Cache block to be replaced.
      */
     CacheBlk* findVictim(Addr addr) override;
 
+    /**
+     * Insert the new block into the cache and update replacement data.
+     *
+     * @param pkt Packet holding the address to update
+     * @param blk The block to update.
+     */
     void insertBlock(PacketPtr pkt, CacheBlk *blk) override;
 
     /**
@@ -275,7 +287,6 @@ public:
                 return;
         }
     }
-
 };
 
 #endif // __MEM_CACHE_TAGS_FA_LRU_HH__

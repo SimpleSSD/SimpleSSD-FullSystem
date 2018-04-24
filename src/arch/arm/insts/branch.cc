@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 ARM Limited
+ * Copyright (c) 2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -34,63 +34,42 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Authors: Ali Saidi
+ * Authors: Giacomo Travaglini
  */
 
-#ifndef __DEV_PS2_HH__
-#define __DEV_PS2_HH__
+#include "arch/arm/insts/branch.hh"
 
-#include <stdint.h>
-#include <list>
+#include "base/cprintf.hh"
 
-#include "base/bitunion.hh"
+namespace ArmISA {
 
-/** @file misc functions and constants required to interface with or emulate ps2
- * devices
- */
+std::string
+BranchReg::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    printIntReg(ss, op1);
+    return ss.str();
+}
 
-namespace Ps2 {
-enum {
-    Ps2Reset        = 0xff,
-    SelfTestPass    = 0xAA,
-    SetStatusLed    = 0xed,
-    SetResolution   = 0xe8,
-    StatusRequest   = 0xe9,
-    SetScaling1_2   = 0xe7,
-    SetScaling1_1   = 0xe6,
-    ReadId          = 0xf2,
-    TpReadId        = 0xe1,
-    Ack             = 0xfa,
-    SetRate         = 0xf3,
-    Enable          = 0xf4,
-    Disable         = 0xf5,
-    SetDefaults     = 0xf6,
-    KeyboardId      = 0xab,
-    TouchKitId      = 0x0a,
-    MouseId         = 0x00,
-};
+std::string
+BranchImm::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    printTarget(ss, pc + imm, symtab);
+    return ss.str();
+}
 
-/** A bitfield that represents the first byte of a mouse movement packet
- */
-BitUnion8(Ps2MouseMovement)
-    Bitfield<0> leftButton;
-    Bitfield<1> rightButton;
-    Bitfield<2> middleButton;
-    Bitfield<3> one;
-    Bitfield<4> xSign;
-    Bitfield<5> ySign;
-    Bitfield<6> xOverflow;
-    Bitfield<7> yOverflow;
-EndBitUnion(Ps2MouseMovement)
+std::string
+BranchRegReg::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    printIntReg(ss, op1);
+    ccprintf(ss, ", ");
+    printIntReg(ss, op2);
+    return ss.str();
+}
 
-/** Convert an x11 key symbol into a set of ps2 charecters.
- * @param key x11 key symbol
- * @param down if the key is being pressed or released
- * @param cur_shift if device has already sent a shift
- * @param keys list of keys command to send to emulate the x11 key symbol
- */
-void keySymToPs2(uint32_t key, bool down, bool &cur_shift,
-        std::list<uint8_t> &keys);
-
-} /* namespace Ps2 */
-#endif // __DEV_PS2_HH__
+} // namespace ArmISA

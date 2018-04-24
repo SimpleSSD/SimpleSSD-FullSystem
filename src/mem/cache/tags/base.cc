@@ -52,8 +52,6 @@
 #include "mem/cache/base.hh"
 #include "sim/sim_exit.hh"
 
-using namespace std;
-
 BaseTags::BaseTags(const Params *p)
     : ClockedObject(p), blkSize(p->block_size), blkMask(blkSize - 1),
       size(p->size),
@@ -63,7 +61,8 @@ BaseTags::BaseTags(const Params *p)
                     std::max(p->tag_latency, p->data_latency)),
       cache(nullptr),
       warmupBound((p->warmup_percentage/100.0) * (p->size / p->block_size)),
-      warmedUp(false), numBlocks(p->size / p->block_size)
+      warmedUp(false), numBlocks(p->size / p->block_size),
+      dataBlks(new uint8_t[p->size]) // Allocate data storage in one big chunk
 {
 }
 
@@ -72,6 +71,54 @@ BaseTags::setCache(BaseCache *_cache)
 {
     assert(!cache);
     cache = _cache;
+}
+
+void
+BaseTags::insertBlock(PacketPtr pkt, CacheBlk *blk)
+{
+    // Get address
+    Addr addr = pkt->getAddr();
+
+    // Update warmup data
+    if (!blk->isTouched) {
+        if (!warmedUp && tagsInUse.value() >= warmupBound) {
+            warmedUp = true;
+            warmupCycle = curTick();
+        }
+    }
+
+    // If we're replacing a block that was previously valid update
+    // stats for it. This can't be done in findBlock() because a
+    // found block might not actually be replaced there if the
+    // coherence protocol says it can't be.
+    if (blk->isValid()) {
+        replacements[0]++;
+        totalRefs += blk->refCount;
+        ++sampledRefs;
+
+        invalidate(blk);
+        blk->invalidate();
+    }
+
+    // Previous block, if existed, has been removed, and now we have
+    // to insert the new one
+    tagsInUse++;
+
+    // Set tag for new block.  Caller is responsible for setting status.
+    blk->tag = extractTag(addr);
+
+    // Deal with what we are bringing in
+    MasterID master_id = pkt->req->masterId();
+    assert(master_id < cache->system->maxMasters());
+    occupancies[master_id]++;
+    blk->srcMasterId = master_id;
+
+    // Set task id
+    blk->task_id = pkt->req->taskId();
+
+    // We only need to write into one tag and one data block.
+    tagAccesses += 1;
+    dataAccesses += 1;
 }
 
 void

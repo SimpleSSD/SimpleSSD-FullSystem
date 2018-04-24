@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 ARM Limited
+ * Copyright (c) 2012-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -324,10 +324,10 @@ class Packet : public Printable
 
   private:
    /**
-    * A pointer to the data being transfered.  It can be differnt
-    * sizes at each level of the heirarchy so it belongs in the
+    * A pointer to the data being transferred. It can be different
+    * sizes at each level of the hierarchy so it belongs to the
     * packet, not request. This may or may not be populated when a
-    * responder recieves the packet. If not populated it memory should
+    * responder receives the packet. If not populated memory should
     * be allocated.
     */
     PacketDataPtr data;
@@ -1068,6 +1068,20 @@ class Packet : public Printable
     template <typename T>
     void set(T v);
 
+
+    /**
+     * Get the data in the packet byte swapped from the specified
+     * endianness and zero-extended to 64 bits.
+     */
+    uint64_t getUintX(ByteOrder endian) const;
+
+    /**
+     * Set the value in the word w after truncating it to the length
+     * of the packet and then byteswapping it to the desired
+     * endianness.
+     */
+    void setUintX(uint64_t w, ByteOrder endian);
+
     /**
      * Copy data into the packet from the provided pointer.
      */
@@ -1096,8 +1110,8 @@ class Packet : public Printable
     }
 
     /**
-     * Copy data from the packet to the provided block pointer, which
-     * is aligned to the given block size.
+     * Copy data from the packet to the memory at the provided pointer.
+     * @param p Pointer to which data will be copied.
      */
     void
     writeData(uint8_t *p) const
@@ -1106,7 +1120,10 @@ class Packet : public Printable
     }
 
     /**
-     * Copy data from the packet to the memory at the provided pointer.
+     * Copy data from the packet to the provided block pointer, which
+     * is aligned to the given block size.
+     * @param blk_data Pointer to block to which data will be copied.
+     * @param blkSize Block size in bytes.
      */
     void
     writeDataToBlock(uint8_t *blk_data, int blkSize) const
