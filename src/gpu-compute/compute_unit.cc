@@ -14,9 +14,9 @@
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software
- * without specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -30,8 +30,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * Author: John Kalamatianos, Anthony Gutierrez
+ * Authors: John Kalamatianos,
+ *          Anthony Gutierrez
  */
+
 #include "gpu-compute/compute_unit.hh"
 
 #include <limits>
@@ -74,7 +76,7 @@ ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
     coalescerToVrfBusWidth(p->coalescer_to_vrf_bus_width),
     req_tick_latency(p->mem_req_latency * p->clk_domain->clockPeriod()),
     resp_tick_latency(p->mem_resp_latency * p->clk_domain->clockPeriod()),
-    _masterId(p->system->getMasterId(name() + ".ComputeUnit")),
+    _masterId(p->system->getMasterId(this, "ComputeUnit")),
     lds(*p->localDataStore), _cacheLineSize(p->system->cacheLineSize()),
     globalSeqNum(0), wavefrontSize(p->wfSize),
     kernelLaunchInst(new KernelLaunchStaticInst())
@@ -1081,7 +1083,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
                safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
     // no PageFaults are permitted for data accesses
-    if (!translation_state->tlbEntry->valid) {
+    if (!translation_state->tlbEntry) {
         DTLBPort::SenderState *sender_state =
             safe_cast<DTLBPort::SenderState*>(translation_state->saved);
 
@@ -1092,8 +1094,6 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
         DPRINTFN("Wave %d couldn't tranlate vaddr %#x\n", w->wfDynId,
                  pkt->req->getVaddr());
     }
-
-    assert(translation_state->tlbEntry->valid);
 
     // update the hitLevel distribution
     int hit_level = translation_state->hitLevel;
@@ -1327,7 +1327,7 @@ ComputeUnit::ITLBPort::recvTimingResp(PacketPtr pkt)
     TheISA::GpuTLB::TranslationState *translation_state =
                  safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
-    bool success = translation_state->tlbEntry->valid;
+    bool success = translation_state->tlbEntry != nullptr;
     delete translation_state->tlbEntry;
     assert(!translation_state->ports.size());
     pkt->senderState = translation_state->saved;

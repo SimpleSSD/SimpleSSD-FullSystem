@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, 2015-2017 ARM Limited
+ * Copyright (c) 2010-2013, 2015-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -1689,6 +1689,8 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                     switch (op2) {
                       case 0:
                         return MISCREG_TTBR0_EL2;
+                      case 1:
+                        return MISCREG_TTBR1_EL2;
                       case 2:
                         return MISCREG_TCR_EL2;
                     }
@@ -2080,9 +2082,12 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                     }
                     break;
                 }
-                break;
+                M5_FALLTHROUGH;
+              default:
+                // S3_<op1>_11_<Cm>_<op2>
+                return MISCREG_IMPDEF_UNIMPL;
             }
-            break;
+            M5_UNREACHABLE;
           case 12:
             switch (op1) {
               case 0:
@@ -2368,7 +2373,8 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                 }
                 break;
             }
-            break;
+            // S3_<op1>_15_<Cm>_<op2>
+            return MISCREG_IMPDEF_UNIMPL;
         }
         break;
     }
@@ -3390,34 +3396,47 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_REVIDR_EL1)
       .allPrivileges().exceptUserMode().writes(0);
     InitReg(MISCREG_ID_PFR0_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_PFR0);
     InitReg(MISCREG_ID_PFR1_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_PFR1);
     InitReg(MISCREG_ID_DFR0_EL1)
       .allPrivileges().exceptUserMode().writes(0)
       .mapsTo(MISCREG_ID_DFR0);
     InitReg(MISCREG_ID_AFR0_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_AFR0);
     InitReg(MISCREG_ID_MMFR0_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_MMFR0);
     InitReg(MISCREG_ID_MMFR1_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_MMFR1);
     InitReg(MISCREG_ID_MMFR2_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_MMFR2);
     InitReg(MISCREG_ID_MMFR3_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_MMFR3);
     InitReg(MISCREG_ID_ISAR0_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR0);
     InitReg(MISCREG_ID_ISAR1_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR1);
     InitReg(MISCREG_ID_ISAR2_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR2);
     InitReg(MISCREG_ID_ISAR3_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR3);
     InitReg(MISCREG_ID_ISAR4_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR4);
     InitReg(MISCREG_ID_ISAR5_EL1)
-      .allPrivileges().exceptUserMode().writes(0);
+      .allPrivileges().exceptUserMode().writes(0)
+      .mapsTo(MISCREG_ID_ISAR5);
     InitReg(MISCREG_MVFR0_EL1)
       .allPrivileges().exceptUserMode().writes(0);
     InitReg(MISCREG_MVFR1_EL1)
@@ -3519,6 +3538,8 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_TTBR0_EL2)
       .hyp().mon()
       .mapsTo(MISCREG_HTTBR);
+    InitReg(MISCREG_TTBR1_EL2)
+      .hyp().mon();
     InitReg(MISCREG_TCR_EL2)
       .hyp().mon()
       .mapsTo(MISCREG_HTCR);
@@ -3601,7 +3622,7 @@ ISA::initializeMiscRegMetadata()
       .hyp().mon()
       .mapsTo(MISCREG_HSR);
     InitReg(MISCREG_FPEXC32_EL2)
-      .hyp().mon();
+      .hyp().mon().mapsTo(MISCREG_FPEXC);
     InitReg(MISCREG_AFSR0_EL3)
       .mon();
     InitReg(MISCREG_AFSR1_EL3)
@@ -3986,10 +4007,10 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_CP15_UNIMPL)
       .unimplemented()
       .warnNotFail();
-    InitReg(MISCREG_A64_UNIMPL)
-      .unimplemented()
-      .warnNotFail();
     InitReg(MISCREG_UNKNOWN);
+    InitReg(MISCREG_IMPDEF_UNIMPL)
+      .unimplemented()
+      .warnNotFail(impdefAsNop);
 
     // Register mappings for some unimplemented registers:
     // ESR_EL1 -> DFSR

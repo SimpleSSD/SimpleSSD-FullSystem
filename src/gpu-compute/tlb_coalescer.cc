@@ -14,9 +14,9 @@
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software
- * without specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -30,7 +30,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * Author: Lisa Hsu
+ * Authors: Lisa Hsu
  */
 
 #include "gpu-compute/tlb_coalescer.hh"
@@ -38,6 +38,7 @@
 #include <cstring>
 
 #include "debug/GPUTLB.hh"
+#include "sim/process.hh"
 
 TLBCoalescer::TLBCoalescer(const Params *p)
     : MemObject(p),
@@ -155,14 +156,13 @@ TLBCoalescer::updatePhysAddresses(PacketPtr pkt)
     TheISA::GpuTLB::TranslationState *sender_state =
         safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
-    TheISA::GpuTlbEntry *tlb_entry = sender_state->tlbEntry;
+    TheISA::TlbEntry *tlb_entry = sender_state->tlbEntry;
     assert(tlb_entry);
     Addr first_entry_vaddr = tlb_entry->vaddr;
     Addr first_entry_paddr = tlb_entry->paddr;
     int page_size = tlb_entry->size();
     bool uncacheable = tlb_entry->uncacheable;
     int first_hit_level = sender_state->hitLevel;
-    bool valid = tlb_entry->valid;
 
     // Get the physical page address of the translated request
     // Using the page_size specified in the TLBEntry allows us
@@ -197,9 +197,10 @@ TLBCoalescer::updatePhysAddresses(PacketPtr pkt)
 
             // update senderState->tlbEntry, so we can insert
             // the correct TLBEentry in the TLBs above.
+            auto p = sender_state->tc->getProcessPtr();
             sender_state->tlbEntry =
-                new TheISA::GpuTlbEntry(0, first_entry_vaddr, first_entry_paddr,
-                                        valid);
+                new TheISA::TlbEntry(p->pid(), first_entry_vaddr,
+                    first_entry_paddr, false, false);
 
             // update the hitLevel for all uncoalesced reqs
             // so that each packet knows where it hit

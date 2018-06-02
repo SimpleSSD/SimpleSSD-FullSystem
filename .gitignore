@@ -31,3 +31,4 @@ m5out
 *.cfg
 *.sh
 scripts/
+compile_flags.txt

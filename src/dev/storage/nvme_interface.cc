@@ -659,6 +659,16 @@ void NVMeInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
   auto iter = eventList.find(eid);
 
   if (iter != eventList.end()) {
+    uint64_t now = curTick();
+
+    if (tick < now) {
+      SimpleSSD::warn("Tried to schedule %" PRIu64
+                      " < curTick() to event %" PRIu64
+                      ". Set tick as curTick().", tick, eid);
+
+      tick = now;
+    }
+
     if (iter->second.scheduled()) {
       SimpleSSD::warn("Event %" PRIu64 " rescheduled from %" PRIu64
                       " to %" PRIu64,

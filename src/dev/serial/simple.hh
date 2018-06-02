@@ -1,6 +1,15 @@
-/**
- * Copyright (c) 2018 Inria
- * All rights reserved.
+/*
+ * Copyright (c) 2018 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -25,42 +34,36 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Authors: Daniel Carvalho
+ * Authors: Andreas Sandberg
  */
 
-/**
- * @file
- * Declaration of a common base class for cache replacement policy objects.
- * In general replacement policies try to use invalid entries as victims,
- * and if no such blocks exist the replacement policy is applied.
- */
 
-#include "mem/cache/replacement_policies/base.hh"
+#ifndef __DEV_SERIAL_SIMPLE_HH__
+#define __DEV_SERIAL_SIMPLE_HH__
 
-BaseReplacementPolicy::BaseReplacementPolicy(const Params *p)
-    : SimObject(p)
+#include "dev/serial/uart.hh"
+
+struct SimpleUartParams;
+
+class SimpleUart : public Uart
 {
-}
+  public:
+    SimpleUart(const SimpleUartParams *p);
 
-void
-BaseReplacementPolicy::touch(CacheBlk *blk)
-{
-    // Inform block has been touched
-    blk->isTouched = true;
+  public: // PioDevice
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
 
-    // Update frequency counter
-    blk->refCount++;
-}
+  public: // Uart
+    void dataAvailable() override {
+        // We don't support interrupts, so ignore the data available
+        // call.
+    };
 
-void
-BaseReplacementPolicy::reset(CacheBlk *blk)
-{
-    // Inform block has been touched
-    blk->isTouched = true;
+  protected: // Configuration
+    const ByteOrder byteOrder;
 
-    // Set insertion tick
-    blk->tickInserted = curTick();
+    const bool endOnEOT;
+};
 
-    // Reset frequency counter
-    blk->refCount = 0;
-}
+#endif // __DEV_SERIAL_SIMPLE_HH__

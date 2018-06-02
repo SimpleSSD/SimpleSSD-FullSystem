@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2013, 2015 ARM Limited
+# Copyright (c) 2012-2013, 2015, 2018 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -46,6 +46,12 @@ from Prefetcher import BasePrefetcher
 from ReplacementPolicies import *
 from Tags import *
 
+
+# Enum for cache clusivity, currently mostly inclusive or mostly
+# exclusive.
+class Clusivity(Enum): vals = ['mostly_incl', 'mostly_excl']
+
+
 class BaseCache(MemObject):
     type = 'BaseCache'
     abstract = True
@@ -90,13 +96,13 @@ class BaseCache(MemObject):
 
     system = Param.System(Parent.any, "System we belong to")
 
-# Enum for cache clusivity, currently mostly inclusive or mostly
-# exclusive.
-class Clusivity(Enum): vals = ['mostly_incl', 'mostly_excl']
-
-class Cache(BaseCache):
-    type = 'Cache'
-    cxx_header = 'mem/cache/cache.hh'
+    # Determine if this cache sends out writebacks for clean lines, or
+    # simply clean evicts. In cases where a downstream cache is mostly
+    # exclusive with respect to this cache (acting as a victim cache),
+    # the clean writebacks are essential for performance. In general
+    # this should be set to True for anything but the last-level
+    # cache.
+    writeback_clean = Param.Bool(False, "Writeback clean lines")
 
     # Control whether this cache should be mostly inclusive or mostly
     # exclusive with respect to upstream caches. The behaviour on a
@@ -110,10 +116,17 @@ class Cache(BaseCache):
     clusivity = Param.Clusivity('mostly_incl',
                                 "Clusivity with upstream cache")
 
-    # Determine if this cache sends out writebacks for clean lines, or
-    # simply clean evicts. In cases where a downstream cache is mostly
-    # exclusive with respect to this cache (acting as a victim cache),
-    # the clean writebacks are essential for performance. In general
-    # this should be set to True for anything but the last-level
-    # cache.
-    writeback_clean = Param.Bool(False, "Writeback clean lines")
+
+class Cache(BaseCache):
+    type = 'Cache'
+    cxx_header = 'mem/cache/cache.hh'
+
+
+class NoncoherentCache(BaseCache):
+    type = 'NoncoherentCache'
+    cxx_header = 'mem/cache/noncoherent_cache.hh'
+
+    # This is typically a last level cache and any clean
+    # writebacks would be unnecessary traffic to the main memory.
+    writeback_clean = False
+

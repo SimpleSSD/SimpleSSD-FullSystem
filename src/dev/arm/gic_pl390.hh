@@ -78,11 +78,11 @@ class Pl390 : public BaseGic, public BaseGicRegisters
     /**
      * As defined in:
      * "ARM Generic Interrupt Controller Architecture" version 2.0
-     * "CoreLink GIC-400 Generic Interrupt Controller" revision r0p1
+     * "PL390 Technical Reference Manual" revision r0p1
      */
-    static constexpr uint32_t  GICD_400_PIDR_VALUE = 0x002bb490;
-    static constexpr uint32_t  GICD_400_IIDR_VALUE = 0x200143B;
-    static constexpr uint32_t  GICC_400_IIDR_VALUE = 0x202143B;
+    static constexpr uint32_t  GICD_400_PIDR_VALUE = 0x000BB390;
+    static constexpr uint32_t  GICD_400_IIDR_VALUE = 0x0000043B;
+    static constexpr uint32_t  GICC_400_IIDR_VALUE = 0x3901043B;
 
     static const AddrRange GICD_IGROUPR;    // interrupt group (unimplemented)
     static const AddrRange GICD_ISENABLER;  // interrupt set enable

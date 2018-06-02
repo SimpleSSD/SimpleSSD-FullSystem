@@ -49,15 +49,15 @@
 
 #include "mem/cache/mshr.hh"
 
-#include <algorithm>
 #include <cassert>
 #include <string>
-#include <vector>
 
 #include "base/logging.hh"
+#include "base/trace.hh"
 #include "base/types.hh"
 #include "debug/Cache.hh"
-#include "mem/cache/cache.hh"
+#include "mem/cache/base.hh"
+#include "mem/request.hh"
 #include "sim/core.hh"
 
 MSHR::MSHR() : downstreamPending(false),
@@ -68,7 +68,8 @@ MSHR::MSHR() : downstreamPending(false),
 }
 
 MSHR::TargetList::TargetList()
-    : needsWritable(false), hasUpgrade(false), allocOnFill(false)
+    : needsWritable(false), hasUpgrade(false), allocOnFill(false),
+      hasFromCache(false)
 {}
 
 
@@ -91,6 +92,10 @@ MSHR::TargetList::updateFlags(PacketPtr pkt, Target::Source source,
         // potentially re-evaluate whether we should allocate on a fill or
         // not
         allocOnFill = allocOnFill || alloc_on_fill;
+
+        if (source != Target::FromPrefetcher) {
+            hasFromCache = hasFromCache || pkt->fromCache();
+        }
     }
 }
 
@@ -304,11 +309,6 @@ MSHR::allocateTarget(PacketPtr pkt, Tick whenReady, Counter _order,
     // assume we'd never issue a prefetch when we've got an
     // outstanding miss
     assert(pkt->cmd != MemCmd::HardPFReq);
-
-    // uncacheable accesses always allocate a new MSHR, and cacheable
-    // accesses ignore any uncacheable MSHRs, thus we should never
-    // have targets addded if originally allocated uncacheable
-    assert(!_isUncacheable);
 
     // if there's a request already in service for this MSHR, we will
     // have to defer the new target until after the response if any of
@@ -582,7 +582,7 @@ MSHR::checkFunctional(PacketPtr pkt)
 }
 
 bool
-MSHR::sendPacket(Cache &cache)
+MSHR::sendPacket(BaseCache &cache)
 {
     return cache.sendMSHRQueuePacket(this);
 }
@@ -590,7 +590,7 @@ MSHR::sendPacket(Cache &cache)
 void
 MSHR::print(std::ostream &os, int verbosity, const std::string &prefix) const
 {
-    ccprintf(os, "%s[%#llx:%#llx](%s) %s %s %s state: %s %s %s %s %s\n",
+    ccprintf(os, "%s[%#llx:%#llx](%s) %s %s %s state: %s %s %s %s %s %s\n",
              prefix, blkAddr, blkAddr + blkSize - 1,
              isSecure ? "s" : "ns",
              isForward ? "Forward" : "",
@@ -600,7 +600,8 @@ MSHR::print(std::ostream &os, int verbosity, const std::string &prefix) const
              inService ? "InSvc" : "",
              downstreamPending ? "DwnPend" : "",
              postInvalidate ? "PostInv" : "",
-             postDowngrade ? "PostDowngr" : "");
+             postDowngrade ? "PostDowngr" : "",
+             hasFromCache() ? "HasFromCache" : "");
 
     if (!targets.empty()) {
         ccprintf(os, "%s  Targets:\n", prefix);

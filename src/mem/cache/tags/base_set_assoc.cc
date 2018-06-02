@@ -50,7 +50,6 @@
 #include <string>
 
 #include "base/intmath.hh"
-#include "sim/core.hh"
 
 BaseSetAssoc::BaseSetAssoc(const Params *p)
     :BaseTags(p), assoc(p->assoc), allocAssoc(p->assoc),
@@ -92,6 +91,9 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
             // Associate a data chunk to the block
             blk->data = &dataBlks[blkSize*blkIndex];
 
+            // Associate a replacement data entry to the block
+            blk->replacementData = replacementPolicy->instantiateEntry();
+
             // Setting the tag to j is just to prevent long chains in the
             // hash table; won't matter because the block is invalid
             blk->tag = j;
@@ -104,6 +106,15 @@ BaseSetAssoc::BaseSetAssoc(const Params *p)
             ++blkIndex;
         }
     }
+}
+
+void
+BaseSetAssoc::invalidate(CacheBlk *blk)
+{
+    BaseTags::invalidate(blk);
+
+    // Invalidate replacement data
+    replacementPolicy->invalidate(blk->replacementData);
 }
 
 CacheBlk*
@@ -119,68 +130,6 @@ CacheBlk*
 BaseSetAssoc::findBlockBySetAndWay(int set, int way) const
 {
     return sets[set].blks[way];
-}
-
-std::string
-BaseSetAssoc::print() const {
-    std::string cache_state;
-    for (unsigned i = 0; i < numSets; ++i) {
-        // link in the data blocks
-        for (unsigned j = 0; j < assoc; ++j) {
-            BlkType *blk = sets[i].blks[j];
-            if (blk->isValid())
-                cache_state += csprintf("\tset: %d block: %d %s\n", i, j,
-                        blk->print());
-        }
-    }
-    if (cache_state.empty())
-        cache_state = "no valid tags\n";
-    return cache_state;
-}
-
-void
-BaseSetAssoc::cleanupRefs()
-{
-    for (unsigned i = 0; i < numSets*assoc; ++i) {
-        if (blks[i].isValid()) {
-            totalRefs += blks[i].refCount;
-            ++sampledRefs;
-        }
-    }
-}
-
-void
-BaseSetAssoc::computeStats()
-{
-    for (unsigned i = 0; i < ContextSwitchTaskId::NumTaskId; ++i) {
-        occupanciesTaskId[i] = 0;
-        for (unsigned j = 0; j < 5; ++j) {
-            ageTaskId[i][j] = 0;
-        }
-    }
-
-    for (unsigned i = 0; i < numSets * assoc; ++i) {
-        if (blks[i].isValid()) {
-            assert(blks[i].task_id < ContextSwitchTaskId::NumTaskId);
-            occupanciesTaskId[blks[i].task_id]++;
-            assert(blks[i].tickInserted <= curTick());
-            Tick age = curTick() - blks[i].tickInserted;
-
-            int age_index;
-            if (age / SimClock::Int::us < 10) { // <10us
-                age_index = 0;
-            } else if (age / SimClock::Int::us < 100) { // <100us
-                age_index = 1;
-            } else if (age / SimClock::Int::ms < 1) { // <1ms
-                age_index = 2;
-            } else if (age / SimClock::Int::ms < 10) { // <10ms
-                age_index = 3;
-            } else
-                age_index = 4; // >10ms
-
-            ageTaskId[blks[i].task_id][age_index]++;
-        }
-    }
 }
 
 BaseSetAssoc *

@@ -48,13 +48,16 @@
 #ifndef __MEM_CACHE_TAGS_BASE_SET_ASSOC_HH__
 #define __MEM_CACHE_TAGS_BASE_SET_ASSOC_HH__
 
-#include <cassert>
-#include <cstring>
-#include <memory>
+#include <functional>
+#include <string>
 #include <vector>
 
+#include "base/logging.hh"
+#include "base/types.hh"
+#include "debug/CacheRepl.hh"
 #include "mem/cache/base.hh"
 #include "mem/cache/blk.hh"
+#include "mem/cache/replacement_policies/base.hh"
 #include "mem/cache/tags/base.hh"
 #include "mem/cache/tags/cacheset.hh"
 #include "mem/packet.hh"
@@ -105,7 +108,6 @@ class BaseSetAssoc : public BaseTags
     BaseReplacementPolicy *replacementPolicy;
 
   public:
-
     /** Convenience typedef. */
      typedef BaseSetAssocParams Params;
 
@@ -118,6 +120,14 @@ class BaseSetAssoc : public BaseTags
      * Destructor
      */
     virtual ~BaseSetAssoc() {};
+
+    /**
+     * This function updates the tags when a block is invalidated but does
+     * not invalidate the block itself. It also updates the replacement data.
+     *
+     * @param blk The block to invalidate.
+     */
+    void invalidate(CacheBlk *blk) override;
 
     /**
      * Find the cache block given set and way
@@ -165,8 +175,11 @@ class BaseSetAssoc : public BaseTags
                 accessLatency;
             }
 
+            // Update number of references to accessed block
+            blk->refCount++;
+
             // Update replacement data of accessed block
-            replacementPolicy->touch(blk);
+            replacementPolicy->touch(blk->replacementData);
         } else {
             // If a cache miss
             lat = lookupLatency;
@@ -193,8 +206,18 @@ class BaseSetAssoc : public BaseTags
      */
     CacheBlk* findVictim(Addr addr) override
     {
+        // Get possible locations for the victim block
+        std::vector<CacheBlk*> locations = getPossibleLocations(addr);
+
         // Choose replacement victim from replacement candidates
-        return replacementPolicy->getVictim(getPossibleLocations(addr));
+        CacheBlk* victim = static_cast<CacheBlk*>(replacementPolicy->getVictim(
+                               std::vector<ReplaceableEntry*>(
+                                   locations.begin(), locations.end())));
+
+        DPRINTF(CacheRepl, "set %x, way %x: selecting blk for replacement\n",
+            victim->set, victim->way);
+
+        return victim;
     }
 
     /**
@@ -223,7 +246,7 @@ class BaseSetAssoc : public BaseTags
         BaseTags::insertBlock(pkt, blk);
 
         // Update replacement policy
-        replacementPolicy->reset(blk);
+        replacementPolicy->reset(blk->replacementData);
     }
 
     /**
@@ -256,16 +279,6 @@ class BaseSetAssoc : public BaseTags
     }
 
     /**
-     * Calculate the set index from the address.
-     * @param addr The address to get the set from.
-     * @return The set index of the address.
-     */
-    int extractSet(Addr addr) const override
-    {
-        return ((addr >> setShift) & setMask);
-    }
-
-    /**
      * Regenerate the block address from the tag and set.
      *
      * @param block The block.
@@ -276,38 +289,31 @@ class BaseSetAssoc : public BaseTags
         return ((blk->tag << tagShift) | ((Addr)blk->set << setShift));
     }
 
-    /**
-     * Called at end of simulation to complete average block reference stats.
-     */
-    void cleanupRefs() override;
-
-    /**
-     * Print all tags used
-     */
-    std::string print() const override;
-
-    /**
-     * Called prior to dumping stats to compute task occupancy
-     */
-    void computeStats() override;
-
-    /**
-     * Visit each block in the tag store and apply a visitor to the
-     * block.
-     *
-     * The visitor should be a function (or object that behaves like a
-     * function) that takes a cache block reference as its parameter
-     * and returns a bool. A visitor can request the traversal to be
-     * stopped by returning false, returning true causes it to be
-     * called for the next block in the tag store.
-     *
-     * \param visitor Visitor to call on each block.
-     */
-    void forEachBlk(CacheBlkVisitor &visitor) override {
-        for (unsigned i = 0; i < numSets * assoc; ++i) {
-            if (!visitor(blks[i]))
-                return;
+    void forEachBlk(std::function<void(CacheBlk &)> visitor) override {
+        for (CacheBlk& blk : blks) {
+            visitor(blk);
         }
+    }
+
+    bool anyBlk(std::function<bool(CacheBlk &)> visitor) override {
+        for (CacheBlk& blk : blks) {
+            if (visitor(blk)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+  private:
+    /**
+     * Calculate the set index from the address.
+     *
+     * @param addr The address to get the set from.
+     * @return The set index of the address.
+     */
+    int extractSet(Addr addr) const
+    {
+        return ((addr >> setShift) & setMask);
     }
 };
 

@@ -48,12 +48,18 @@
 #ifndef __MEM_CACHE_MSHR_HH__
 #define __MEM_CACHE_MSHR_HH__
 
+#include <cassert>
+#include <iosfwd>
 #include <list>
+#include <string>
 
 #include "base/printable.hh"
+#include "base/types.hh"
 #include "mem/cache/queue_entry.hh"
+#include "mem/packet.hh"
+#include "sim/core.hh"
 
-class Cache;
+class BaseCache;
 
 /**
  * Miss Status and handling Register. This class keeps all the information
@@ -162,6 +168,11 @@ class MSHR : public QueueEntry, public Printable
         bool hasUpgrade;
         /** Set when the response should allocate on fill */
         bool allocOnFill;
+        /**
+         * Determine whether there was at least one non-snooping
+         * target coming from another cache.
+         */
+        bool hasFromCache;
 
         TargetList();
 
@@ -176,7 +187,12 @@ class MSHR : public QueueEntry, public Printable
         void updateFlags(PacketPtr pkt, Target::Source source,
                          bool alloc_on_fill);
 
-        void resetFlags() { needsWritable = hasUpgrade = allocOnFill = false; }
+        void resetFlags() {
+            needsWritable = false;
+            hasUpgrade = false;
+            allocOnFill = false;
+            hasFromCache = false;
+        }
 
         /**
          * Goes through the list of targets and uses them to populate
@@ -191,7 +207,8 @@ class MSHR : public QueueEntry, public Printable
          * values.
          */
         bool isReset() const {
-            return !needsWritable && !hasUpgrade && !allocOnFill;
+            return !needsWritable && !hasUpgrade && !allocOnFill &&
+                !hasFromCache;
         }
 
         /**
@@ -252,11 +269,21 @@ class MSHR : public QueueEntry, public Printable
         assert(inService); return postDowngrade;
     }
 
-    bool sendPacket(Cache &cache);
+    bool sendPacket(BaseCache &cache);
 
     bool allocOnFill() const {
         return targets.allocOnFill;
     }
+
+    /**
+     * Determine if there are non-deferred requests from other caches
+     *
+     * @return true if any of the targets is from another cache
+     */
+    bool hasFromCache() const {
+        return targets.hasFromCache;
+    }
+
   private:
 
     /**

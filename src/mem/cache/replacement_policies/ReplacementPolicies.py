@@ -40,6 +40,11 @@ class FIFORP(BaseReplacementPolicy):
     cxx_class = 'FIFORP'
     cxx_header = "mem/cache/replacement_policies/fifo_rp.hh"
 
+class SecondChanceRP(FIFORP):
+    type = 'SecondChanceRP'
+    cxx_class = 'SecondChanceRP'
+    cxx_header = "mem/cache/replacement_policies/second_chance_rp.hh"
+
 class LFURP(BaseReplacementPolicy):
     type = 'LFURP'
     cxx_class = 'LFURP'
@@ -73,7 +78,7 @@ class BRRIPRP(BaseReplacementPolicy):
     type = 'BRRIPRP'
     cxx_class = 'BRRIPRP'
     cxx_header = "mem/cache/replacement_policies/brrip_rp.hh"
-    max_RRPV = Param.Unsigned(3, "Maximum RRPV possible")
+    max_RRPV = Param.Int(3, "Maximum RRPV possible")
     hit_priority = Param.Bool(False,
         "Prioritize evicting blocks that havent had a hit recently")
     btp = Param.Percent(3,
@@ -81,3 +86,7 @@ class BRRIPRP(BaseReplacementPolicy):
 
 class RRIPRP(BRRIPRP):
     btp = 0
+
+class NRURP(BRRIPRP):
+    btp = 0
+    max_RRPV = 1

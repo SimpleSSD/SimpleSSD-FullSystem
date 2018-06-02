@@ -90,6 +90,12 @@ namespace ArmISA
         bool haveLargeAsid64;
         uint8_t physAddrRange64;
 
+        /**
+         * If true, accesses to IMPLEMENTATION DEFINED registers are treated
+         * as NOP hence not causing UNDEFINED INSTRUCTION.
+         */
+        bool impdefAsNop;
+
         /** MiscReg metadata **/
         struct MiscRegLUTEntry {
             uint32_t lower;  // Lower half mapped to this register
@@ -199,6 +205,11 @@ namespace ArmISA
                 info[MISCREG_PRI_NS_WR] = v;
                 return *this;
             }
+            chain privNonSecure(bool v = true) const {
+                privNonSecureRead(v);
+                privNonSecureWrite(v);
+                return *this;
+            }
             chain privSecureRead(bool v = true) const {
                 info[MISCREG_PRI_S_RD] = v;
                 return *this;
@@ -210,6 +221,11 @@ namespace ArmISA
             chain privSecure(bool v = true) const {
                 privSecureRead(v);
                 privSecureWrite(v);
+                return *this;
+            }
+            chain priv(bool v = true) const {
+                privSecure(v);
+                privNonSecure(v);
                 return *this;
             }
             chain hypRead(bool v = true) const {

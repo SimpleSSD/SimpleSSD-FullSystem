@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 ARM Limited
+ * Copyright (c) 2012-2018 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -48,9 +48,15 @@
 #ifndef __MEM_CACHE_BLK_HH__
 #define __MEM_CACHE_BLK_HH__
 
+#include <cassert>
+#include <cstdint>
+#include <iosfwd>
 #include <list>
+#include <string>
 
 #include "base/printable.hh"
+#include "base/types.hh"
+#include "mem/cache/replacement_policies/base.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
 
@@ -76,7 +82,7 @@ enum CacheBlkStatusBits : unsigned {
  * A Basic Cache block.
  * Contains the tag, status, and a pointer to data.
  */
-class CacheBlk
+class CacheBlk : public ReplaceableEntry
 {
   public:
     /** Task Id associated with this block */
@@ -108,12 +114,6 @@ class CacheBlk
      */
     int set, way;
 
-    /**
-      * Whether this block has been touched since simulation started.
-      * Used to calculate number of used tags.
-      */
-    bool isTouched;
-
     /** Number of references to this block since it was brought in. */
     unsigned refCount;
 
@@ -122,17 +122,6 @@ class CacheBlk
 
     /** Tick on which the block was inserted in the cache. */
     Tick tickInserted;
-
-    /**
-     * Replacement policy data. As of now it is only an update timestamp.
-     * Tick on which the block was last touched.
-     */
-    Tick lastTouchTick;
-
-    /**
-     * Re-Reference Interval Prediction Value. Used with RRIP repl policy.
-     */
-    unsigned rrpv;
 
   protected:
     /**
@@ -177,7 +166,6 @@ class CacheBlk
     std::list<Lock> lockList;
 
   public:
-
     CacheBlk()
     {
         invalidate();
@@ -227,7 +215,6 @@ class CacheBlk
         task_id = ContextSwitchTaskId::Unknown;
         status = 0;
         whenReady = MaxTick;
-        isTouched = false;
         refCount = 0;
         srcMasterId = Request::invldMasterId;
         tickInserted = MaxTick;
@@ -261,6 +248,20 @@ class CacheBlk
     {
         return (status & BlkSecure) != 0;
     }
+
+    /**
+     * Set member variables when a block insertion occurs. Resets reference
+     * count to 1 (the insertion counts as a reference), and touch block if
+     * it hadn't been touched previously. Sets the insertion tick to the
+     * current tick. Does not make block valid.
+     *
+     * @param tag Block address tag.
+     * @param is_secure Whether the block is in secure space or not.
+     * @param src_master_ID The source requestor ID.
+     * @param task_ID The new task ID.
+     */
+    void insert(const Addr tag, const bool is_secure, const int src_master_ID,
+                const uint32_t task_ID);
 
     /**
      * Track the fact that a local locked was issued to the
@@ -392,6 +393,66 @@ class CacheBlk
 };
 
 /**
+ * Special instance of CacheBlk for use with tempBlk that deals with its
+ * block address regeneration.
+ * @sa Cache
+ */
+class TempCacheBlk final : public CacheBlk
+{
+  private:
+    /**
+     * Copy of the block's address, used to regenerate tempBlock's address.
+     */
+    Addr _addr;
+
+  public:
+    TempCacheBlk() : CacheBlk() {}
+    TempCacheBlk(const TempCacheBlk&) = delete;
+    TempCacheBlk& operator=(const TempCacheBlk&) = delete;
+    ~TempCacheBlk() {};
+
+    /**
+     * Invalidate the block and clear all state.
+     */
+    void invalidate() override {
+        CacheBlk::invalidate();
+
+        _addr = MaxAddr;
+    }
+
+    /**
+     * Set member variables when a block insertion occurs. A TempCacheBlk does
+     * not have all the information required to regenerate the block's address,
+     * so it is provided the address itself for easy regeneration.
+     *
+     * @param addr Block address.
+     * @param is_secure Whether the block is in secure space or not.
+     */
+    void insert(const Addr addr, const bool is_secure)
+    {
+        // Set block address
+        _addr = addr;
+
+        // Set secure state
+        if (is_secure) {
+            status = BlkSecure;
+        } else {
+            status = 0;
+        }
+    }
+
+    /**
+     * Get block's address.
+     *
+     * @return addr Address value.
+     */
+    Addr getAddr() const
+    {
+        return _addr;
+    }
+};
+
+/**
  * Simple class to provide virtual print() method on cache blocks
  * without allocating a vtable pointer for every single cache block.
  * Just wrap the CacheBlk object in an instance of this before passing
@@ -405,22 +466,6 @@ class CacheBlkPrintWrapper : public Printable
     virtual ~CacheBlkPrintWrapper() {}
     void print(std::ostream &o, int verbosity = 0,
                const std::string &prefix = "") const;
-};
-
-/**
- * Base class for cache block visitor, operating on the cache block
- * base class (later subclassed for the various tag classes). This
- * visitor class is used as part of the forEachBlk interface in the
- * tag classes.
- */
-class CacheBlkVisitor
-{
-  public:
-
-    CacheBlkVisitor() {}
-    virtual ~CacheBlkVisitor() {}
-
-    virtual bool operator()(CacheBlk &blk) = 0;
 };
 
 #endif //__MEM_CACHE_BLK_HH__
