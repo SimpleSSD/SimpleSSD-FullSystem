@@ -165,8 +165,6 @@ class Interrupts : public BasicPioDevice, IntDevice
         return bits(regs[base + (vector / 32)], vector % 32);
     }
 
-    void requestInterrupt(uint8_t vector, uint8_t deliveryMode, bool level);
-
     BaseCPU *cpu;
 
     int initialApicId;
@@ -177,6 +175,12 @@ class Interrupts : public BasicPioDevice, IntDevice
   public:
 
     int getInitialApicId() { return initialApicId; }
+
+    /*
+     * Routes MSI/MSI-X
+     */
+    void requestInterrupt(uint8_t vector, uint8_t deliveryMode, bool level);
+    void getID(uint8_t &pid, uint8_t &lid, uint8_t &model);
 
     /*
      * Params stuff.

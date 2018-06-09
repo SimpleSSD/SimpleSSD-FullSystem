@@ -674,7 +674,7 @@ def makeLinuxX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, Ruby=False,
     self = LinuxX86System()
 
     # Build up the x86 system and then specialize it for Linux
-    makeX86System(mem_mode, numCPUs, simplessd, mdesc, self, Ruby)
+    makeX86System(mem_mode, simplessd, numCPUs, mdesc, self, Ruby)
 
     # We assume below that there's at least 1MB of memory. We'll require 2
     # just to avoid corner cases.
