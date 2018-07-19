@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2013, 2015-2017 ARM Limited
+ * Copyright (c) 2010, 2013, 2015-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -105,6 +105,10 @@ class Pl390 : public BaseGic, public BaseGicRegisters
         GICC_RPR   = 0x14, // running priority
         GICC_HPPIR = 0x18, // highest pending interrupt
         GICC_ABPR  = 0x1c, // aliased binary point
+        GICC_APR0  = 0xd0, // active priority register 0
+        GICC_APR1  = 0xd4, // active priority register 1
+        GICC_APR2  = 0xd8, // active priority register 2
+        GICC_APR3  = 0xdc, // active priority register 3
         GICC_IIDR  = 0xfc, // cpu interface id register
 
         CPU_SIZE   = 0xff
@@ -320,9 +324,6 @@ class Pl390 : public BaseGic, public BaseGicRegisters
     uint32_t cpuPpiPending[CPU_MAX];
     uint32_t cpuPpiActive[CPU_MAX];
 
-    /** IRQ Enable Used for debug */
-    bool irqEnable;
-
     /** software generated interrupt
      * @param data data to decode that indicates which cpus to interrupt
      */
@@ -391,15 +392,6 @@ class Pl390 : public BaseGic, public BaseGicRegisters
 
     void sendPPInt(uint32_t num, uint32_t cpu) override;
     void clearPPInt(uint32_t num, uint32_t cpu) override;
-
-  public: // Test & debug intefaces
-    /** @{ */
-    /* Various functions fer testing and debugging */
-    void driveSPI(uint32_t spi);
-    void driveLegIRQ(bool state);
-    void driveLegFIQ(bool state);
-    void driveIrqEn(bool state);
-    /** @} */
 
   protected:
     /** Handle a read to the distributor portion of the GIC

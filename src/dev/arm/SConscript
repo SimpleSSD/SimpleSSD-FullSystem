@@ -47,6 +47,7 @@ if env['TARGET_ISA'] == 'arm':
     SimObject('UFSHostDevice.py')
     SimObject('EnergyCtrl.py')
     SimObject('NoMali.py')
+    SimObject('VirtIOMMIO.py')
 
     Source('a9scu.cc')
     Source('amba_device.cc')
@@ -69,6 +70,7 @@ if env['TARGET_ISA'] == 'arm':
     Source('timer_cpulocal.cc')
     Source('timer_a9global.cc')
     Source('vgic.cc')
+    Source('vio_mmio.cc')
     Source('ufs_device.cc')
     Source('energy_ctrl.cc')
 

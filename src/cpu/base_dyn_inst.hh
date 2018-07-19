@@ -304,12 +304,12 @@ class BaseDynInst : public ExecContext, public RefCounted
                    Request::Flags flags, uint64_t *res);
 
     /** Splits a request in two if it crosses a dcache block. */
-    void splitRequest(RequestPtr req, RequestPtr &sreqLow,
+    void splitRequest(const RequestPtr &req, RequestPtr &sreqLow,
                       RequestPtr &sreqHigh);
 
     /** Initiate a DTB address translation. */
-    void initiateTranslation(RequestPtr req, RequestPtr sreqLow,
-                             RequestPtr sreqHigh, uint64_t *res,
+    void initiateTranslation(const RequestPtr &req, const RequestPtr &sreqLow,
+                             const RequestPtr &sreqHigh, uint64_t *res,
                              BaseTLB::Mode mode);
 
     /** Finish a DTB address translation. */
@@ -505,6 +505,7 @@ class BaseDynInst : public ExecContext, public RefCounted
     bool isMemRef()       const { return staticInst->isMemRef(); }
     bool isLoad()         const { return staticInst->isLoad(); }
     bool isStore()        const { return staticInst->isStore(); }
+    bool isAtomic()       const { return staticInst->isAtomic(); }
     bool isStoreConditional() const
     { return staticInst->isStoreConditional(); }
     bool isInstPrefetch() const { return staticInst->isInstPrefetch(); }
@@ -893,17 +894,18 @@ BaseDynInst<Impl>::initiateMemRead(Addr addr, unsigned size,
                                    Request::Flags flags)
 {
     instFlags[ReqMade] = true;
-    Request *req = NULL;
-    Request *sreqLow = NULL;
-    Request *sreqHigh = NULL;
+    RequestPtr req = NULL;
+    RequestPtr sreqLow = NULL;
+    RequestPtr sreqHigh = NULL;
 
     if (instFlags[ReqMade] && translationStarted()) {
         req = savedReq;
         sreqLow = savedSreqLow;
         sreqHigh = savedSreqHigh;
     } else {
-        req = new Request(asid, addr, size, flags, masterId(), this->pc.instAddr(),
-                          thread->contextId());
+        req = std::make_shared<Request>(
+            asid, addr, size, flags, masterId(),
+            this->pc.instAddr(), thread->contextId());
 
         req->taskId(cpu->taskId());
 
@@ -921,10 +923,7 @@ BaseDynInst<Impl>::initiateMemRead(Addr addr, unsigned size,
             instFlags[EffAddrValid] = true;
 
             if (cpu->checker) {
-                if (reqToVerify != NULL) {
-                    delete reqToVerify;
-                }
-                reqToVerify = new Request(*req);
+                reqToVerify = std::make_shared<Request>(*req);
             }
             fault = cpu->read(req, sreqLow, sreqHigh, lqIdx);
         } else {
@@ -949,17 +948,18 @@ BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size, Addr addr,
         traceData->setMem(addr, size, flags);
 
     instFlags[ReqMade] = true;
-    Request *req = NULL;
-    Request *sreqLow = NULL;
-    Request *sreqHigh = NULL;
+    RequestPtr req = NULL;
+    RequestPtr sreqLow = NULL;
+    RequestPtr sreqHigh = NULL;
 
     if (instFlags[ReqMade] && translationStarted()) {
         req = savedReq;
         sreqLow = savedSreqLow;
         sreqHigh = savedSreqHigh;
     } else {
-        req = new Request(asid, addr, size, flags, masterId(), this->pc.instAddr(),
-                          thread->contextId());
+        req = std::make_shared<Request>(
+            asid, addr, size, flags, masterId(),
+            this->pc.instAddr(), thread->contextId());
 
         req->taskId(cpu->taskId());
 
@@ -976,10 +976,7 @@ BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size, Addr addr,
         instFlags[EffAddrValid] = true;
 
         if (cpu->checker) {
-            if (reqToVerify != NULL) {
-                delete reqToVerify;
-            }
-            reqToVerify = new Request(*req);
+            reqToVerify = std::make_shared<Request>(*req);
         }
         fault = cpu->write(req, sreqLow, sreqHigh, data, sqIdx);
     }
@@ -989,7 +986,7 @@ BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size, Addr addr,
 
 template<class Impl>
 inline void
-BaseDynInst<Impl>::splitRequest(RequestPtr req, RequestPtr &sreqLow,
+BaseDynInst<Impl>::splitRequest(const RequestPtr &req, RequestPtr &sreqLow,
                                 RequestPtr &sreqHigh)
 {
     // Check to see if the request crosses the next level block boundary.
@@ -1006,8 +1003,10 @@ BaseDynInst<Impl>::splitRequest(RequestPtr req, RequestPtr &sreqLow,
 
 template<class Impl>
 inline void
-BaseDynInst<Impl>::initiateTranslation(RequestPtr req, RequestPtr sreqLow,
-                                       RequestPtr sreqHigh, uint64_t *res,
+BaseDynInst<Impl>::initiateTranslation(const RequestPtr &req,
+                                       const RequestPtr &sreqLow,
+                                       const RequestPtr &sreqHigh,
+                                       uint64_t *res,
                                        BaseTLB::Mode mode)
 {
     translationStarted(true);

@@ -234,6 +234,7 @@ class MSHR : public QueueEntry, public Printable
         void replaceUpgrades();
 
         void clearDownstreamPending();
+        void clearDownstreamPending(iterator begin, iterator end);
         bool checkFunctional(PacketPtr pkt);
         void print(std::ostream &os, int verbosity,
                    const std::string &prefix) const;
@@ -285,6 +286,16 @@ class MSHR : public QueueEntry, public Printable
     }
 
   private:
+    /**
+     * Promotes deferred targets that satisfy a predicate
+     *
+     * Deferred targets are promoted to the target list if they
+     * satisfy a given condition. The operation stops at the first
+     * deferred target that doesn't satisfy the condition.
+     *
+     * @param pred A condition on a Target
+     */
+    void promoteIf(const std::function<bool (Target &)>& pred);
 
     /**
      * Pointer to this MSHR on the ready list.
@@ -384,6 +395,23 @@ class MSHR : public QueueEntry, public Printable
 
     bool promoteDeferredTargets();
 
+    /**
+     * Promotes deferred targets that do not require writable
+     *
+     * Move targets from the deferred targets list to the target list
+     * starting from the first deferred target until the first target
+     * that is a cache maintenance operation or needs a writable copy
+     * of the block
+     */
+    void promoteReadable();
+
+    /**
+     * Promotes deferred targets that do not require writable
+     *
+     * Requests in the deferred target list are moved to the target
+     * list up until the first target that is a cache maintenance
+     * operation or needs a writable copy of the block
+     */
     void promoteWritable();
 
     bool checkFunctional(PacketPtr pkt);

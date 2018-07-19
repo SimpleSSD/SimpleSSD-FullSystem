@@ -136,7 +136,7 @@ class CacheBlk : public ReplaceableEntry
 
         // check for matching execution context, and an address that
         // is within the lock
-        bool matches(const RequestPtr req) const
+        bool matches(const RequestPtr &req) const
         {
             Addr req_low = req->getPaddr();
             Addr req_high = req_low + req->getSize() -1;
@@ -145,7 +145,7 @@ class CacheBlk : public ReplaceableEntry
         }
 
         // check if a request is intersecting and thus invalidating the lock
-        bool intersects(const RequestPtr req) const
+        bool intersects(const RequestPtr &req) const
         {
             Addr req_low = req->getPaddr();
             Addr req_high = req_low + req->getSize() - 1;
@@ -153,7 +153,7 @@ class CacheBlk : public ReplaceableEntry
             return (req_low <= highAddr) && (req_high >= lowAddr);
         }
 
-        Lock(const RequestPtr req)
+        Lock(const RequestPtr &req)
             : contextId(req->contextId()),
               lowAddr(req->getPaddr()),
               highAddr(lowAddr + req->getSize() - 1)
@@ -166,7 +166,7 @@ class CacheBlk : public ReplaceableEntry
     std::list<Lock> lockList;
 
   public:
-    CacheBlk()
+    CacheBlk() : data(nullptr)
     {
         invalidate();
     }
@@ -260,8 +260,8 @@ class CacheBlk : public ReplaceableEntry
      * @param src_master_ID The source requestor ID.
      * @param task_ID The new task ID.
      */
-    void insert(const Addr tag, const bool is_secure, const int src_master_ID,
-                const uint32_t task_ID);
+    virtual void insert(const Addr tag, const bool is_secure,
+                        const int src_master_ID, const uint32_t task_ID);
 
     /**
      * Track the fact that a local locked was issued to the
@@ -285,7 +285,7 @@ class CacheBlk : public ReplaceableEntry
      * Clear the any load lock that intersect the request, and is from
      * a different context.
      */
-    void clearLoadLocks(RequestPtr req)
+    void clearLoadLocks(const RequestPtr &req)
     {
         auto l = lockList.begin();
         while (l != lockList.end()) {
@@ -357,7 +357,7 @@ class CacheBlk : public ReplaceableEntry
         if (!pkt->isLLSC() && lockList.empty())
             return true;
 
-        RequestPtr req = pkt->req;
+        const RequestPtr &req = pkt->req;
 
         if (pkt->isLLSC()) {
             // it's a store conditional... have to check for matching
@@ -420,15 +420,8 @@ class TempCacheBlk final : public CacheBlk
         _addr = MaxAddr;
     }
 
-    /**
-     * Set member variables when a block insertion occurs. A TempCacheBlk does
-     * not have all the information required to regenerate the block's address,
-     * so it is provided the address itself for easy regeneration.
-     *
-     * @param addr Block address.
-     * @param is_secure Whether the block is in secure space or not.
-     */
-    void insert(const Addr addr, const bool is_secure)
+    void insert(const Addr addr, const bool is_secure,
+                const int src_master_ID=0, const uint32_t task_ID=0) override
     {
         // Set block address
         _addr = addr;

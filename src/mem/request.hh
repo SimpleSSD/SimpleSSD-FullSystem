@@ -81,7 +81,7 @@ namespace ContextSwitchTaskId {
 
 class Request;
 
-typedef Request* RequestPtr;
+typedef std::shared_ptr<Request> RequestPtr;
 typedef uint16_t MasterID;
 
 class Request
@@ -445,10 +445,28 @@ class Request
 
     Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
             Addr pc, ContextID cid, AtomicOpFunctor *atomic_op)
-        : atomicOpFunctor(atomic_op)
     {
-        setVirt(asid, vaddr, size, flags, mid, pc);
+        setVirt(asid, vaddr, size, flags, mid, pc, atomic_op);
         setContext(cid);
+    }
+
+    Request(const Request& other)
+        : _paddr(other._paddr), _size(other._size),
+          _masterId(other._masterId),
+          _flags(other._flags),
+          _memSpaceConfigFlags(other._memSpaceConfigFlags),
+          privateFlags(other.privateFlags),
+          _time(other._time),
+          _taskId(other._taskId), _asid(other._asid), _vaddr(other._vaddr),
+          _extraData(other._extraData), _contextId(other._contextId),
+          _pc(other._pc), _reqInstSeqNum(other._reqInstSeqNum),
+          translateDelta(other.translateDelta),
+          accessDelta(other.accessDelta), depth(other.depth)
+    {
+        if (other.atomicOpFunctor)
+            atomicOpFunctor = (other.atomicOpFunctor)->clone();
+        else
+            atomicOpFunctor = nullptr;
     }
 
     ~Request()
@@ -474,7 +492,7 @@ class Request
      */
     void
     setVirt(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
-            Addr pc)
+            Addr pc, AtomicOpFunctor *amo_op = nullptr)
     {
         _asid = asid;
         _vaddr = vaddr;
@@ -490,6 +508,7 @@ class Request
         depth = 0;
         accessDelta = 0;
         translateDelta = 0;
+        atomicOpFunctor = amo_op;
     }
 
     /**
@@ -515,8 +534,8 @@ class Request
         assert(privateFlags.isSet(VALID_VADDR));
         assert(privateFlags.noneSet(VALID_PADDR));
         assert(split_addr > _vaddr && split_addr < _vaddr + _size);
-        req1 = new Request(*this);
-        req2 = new Request(*this);
+        req1 = std::make_shared<Request>(*this);
+        req2 = std::make_shared<Request>(*this);
         req1->_size = split_addr - _vaddr;
         req2->_vaddr = split_addr;
         req2->_size = _size - req1->_size;

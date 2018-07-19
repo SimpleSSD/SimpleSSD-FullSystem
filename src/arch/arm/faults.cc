@@ -257,6 +257,10 @@ template<> ArmFault::FaultVals ArmFaultVals<VirtualFastInterrupt>::vals(
     "Virtual FIQ",           0x01C, 0x100, 0x300, 0x500, 0x700, MODE_FIQ,
     4, 4, 0, 0, false, true,  true,  EC_INVALID
 );
+template<> ArmFault::FaultVals ArmFaultVals<IllegalInstSetStateFault>::vals(
+    "Illegal Inst Set State Fault",   0x004, 0x000, 0x200, 0x400, 0x600, MODE_UNDEFINED,
+    4, 2, 0, 0, true, false, false, EC_ILLEGAL_INST
+);
 template<> ArmFault::FaultVals ArmFaultVals<SupervisorTrap>::vals(
     // Some dummy values (SupervisorTrap is AArch64-only)
     "Supervisor Trap",   0x014, 0x000, 0x200, 0x400, 0x600, MODE_SVC,
@@ -286,11 +290,6 @@ template<> ArmFault::FaultVals ArmFaultVals<ArmSev>::vals(
     // Some dummy values
     "ArmSev Flush",          0x000, 0x000, 0x000, 0x000, 0x000, MODE_SVC,
     0, 0, 0, 0, false, true,  true,  EC_UNKNOWN
-);
-template<> ArmFault::FaultVals ArmFaultVals<IllegalInstSetStateFault>::vals(
-    // Some dummy values (SPAlignmentFault is AArch64-only)
-    "Illegal Inst Set State Fault",   0x000, 0x000, 0x200, 0x400, 0x600, MODE_SVC,
-    0, 0, 0, 0, true, false, false, EC_ILLEGAL_INST
 );
 
 Addr
@@ -601,6 +600,7 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     pc.nextJazelle(pc.jazelle());
     pc.aarch64(!cpsr.width);
     pc.nextAArch64(!cpsr.width);
+    pc.illegalExec(false);
     tc->pcState(pc);
 }
 
@@ -684,6 +684,7 @@ ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
     PCState pc(new_pc);
     pc.aarch64(!cpsr.width);
     pc.nextAArch64(!cpsr.width);
+    pc.illegalExec(false);
     tc->pcState(pc);
 
     // If we have a valid instruction then use it to annotate this fault with
@@ -1532,8 +1533,6 @@ SoftwareBreakpoint::SoftwareBreakpoint(ExtMachInst _mach_inst, uint32_t _iss)
 bool
 SoftwareBreakpoint::routeToHyp(ThreadContext *tc) const
 {
-    assert(from64);
-
     const bool have_el2 = ArmSystem::haveVirtualization(tc);
 
     const HCR hcr  = tc->readMiscRegNoEffect(MISCREG_HCR_EL2);
@@ -1541,6 +1540,12 @@ SoftwareBreakpoint::routeToHyp(ThreadContext *tc) const
 
     return have_el2 && !inSecureState(tc) && fromEL <= EL1 &&
         (hcr.tge || mdcr.tde);
+}
+
+ExceptionClass
+SoftwareBreakpoint::ec(ThreadContext *tc) const
+{
+    return from64 ? EC_SOFTWARE_BREAKPOINT_64 : vals.ec;
 }
 
 void

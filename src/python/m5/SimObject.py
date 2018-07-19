@@ -407,7 +407,8 @@ class MetaSimObject(type):
         'cxx_type' : str,
         'cxx_header' : str,
         'type' : str,
-        'cxx_bases' : list,
+        'cxx_base' : (str, type(None)),
+        'cxx_extra_bases' : list,
         'cxx_exports' : list,
         'cxx_param_exports' : list,
     }
@@ -441,8 +442,8 @@ class MetaSimObject(type):
                 value_dict[key] = val
         if 'abstract' not in value_dict:
             value_dict['abstract'] = False
-        if 'cxx_bases' not in value_dict:
-            value_dict['cxx_bases'] = []
+        if 'cxx_extra_bases' not in value_dict:
+            value_dict['cxx_extra_bases'] = []
         if 'cxx_exports' not in value_dict:
             value_dict['cxx_exports'] = cxx_exports
         else:
@@ -734,8 +735,19 @@ module_init(py::module &m_internal)
         code()
         code.dedent()
 
-        bases = [ cls._base.cxx_class ] + cls.cxx_bases if cls._base else \
-                cls.cxx_bases
+        bases = []
+        if 'cxx_base' in cls._value_dict:
+            # If the c++ base class implied by python inheritance was
+            # overridden, use that value.
+            if cls.cxx_base:
+                bases.append(cls.cxx_base)
+        elif cls._base:
+            # If not and if there was a SimObject base, use its c++ class
+            # as this class' base.
+            bases.append(cls._base.cxx_class)
+        # Add in any extra bases that were requested.
+        bases.extend(cls.cxx_extra_bases)
+
         if bases:
             base_str = ", ".join(bases)
             code('py::class_<${{cls.cxx_class}}, ${base_str}, ' \
@@ -886,7 +898,7 @@ def cxxMethod(*args, **kwargs):
 
         @wraps(func)
         def py_call(self, *args, **kwargs):
-            return self.func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
         f = py_call if override else cxx_call
         f.__pybind = PyBindMethod(name, cxx_name=cxx_name, args=args)
@@ -933,7 +945,7 @@ class SimObject(object):
     abstract = True
 
     cxx_header = "sim/sim_object.hh"
-    cxx_bases = [ "Drainable", "Serializable" ]
+    cxx_extra_bases = [ "Drainable", "Serializable" ]
     eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
 
     cxx_exports = [
@@ -1508,11 +1520,10 @@ class SimObject(object):
         yield  # make this function a (null) generator
 
     def recurseDeviceTree(self, state):
-        for child in [getattr(self, c) for c in self._children]:
+        for child in self._children.itervalues():
             for item in child: # For looping over SimObjectVectors
-                if isinstance(item, SimObject):
-                    for dt in item.generateDeviceTree(state):
-                        yield dt
+                for dt in item.generateDeviceTree(state):
+                    yield dt
 
 # Function to provide to C++ so it can look up instances based on paths
 def resolveSimObject(name):

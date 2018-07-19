@@ -230,7 +230,7 @@ class ArmStaticInst : public StaticInst
                 // Now check the new mode is allowed
                 OperatingMode newMode = (OperatingMode) (val & mask(5));
                 OperatingMode oldMode = (OperatingMode)(uint32_t)cpsr.mode;
-                if (!badMode(newMode)) {
+                if (!badMode(tc, newMode)) {
                     bool validModeChange = true;
                     // Check for attempts to enter modes only permitted in
                     // Secure state from Non-secure state. These are Monitor
@@ -369,6 +369,14 @@ class ArmStaticInst : public StaticInst
     // Returns true if processor has to trap a WFI/WFE instruction.
     bool isWFxTrapping(ThreadContext *tc,
                        ExceptionLevel targetEL, bool isWfe) const;
+
+    /**
+     * Trigger a Software Breakpoint.
+     *
+     * See aarch32/exceptions/debug/AArch32.SoftwareBreakpoint in the
+     * ARM ARM psueodcode library.
+     */
+    Fault softwareBreakpoint32(ExecContext *xc, uint16_t imm) const;
 
     /**
      * Trap an access to Advanced SIMD or FP registers due to access

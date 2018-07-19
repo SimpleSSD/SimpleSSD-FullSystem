@@ -644,6 +644,9 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
         return 0; // bits [63:0] RES0 (reserved for future use)
 
       // Generic Timer registers
+      case MISCREG_CNTHV_CTL_EL2:
+      case MISCREG_CNTHV_CVAL_EL2:
+      case MISCREG_CNTHV_TVAL_EL2:
       case MISCREG_CNTFRQ ... MISCREG_CNTHP_CTL:
       case MISCREG_CNTPCT ... MISCREG_CNTHP_CVAL:
       case MISCREG_CNTKCTL_EL1 ... MISCREG_CNTV_CVAL_EL0:
@@ -704,6 +707,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
         PCState pc = tc->pcState();
         pc.nextThumb(cpsr.t);
         pc.nextJazelle(cpsr.j);
+        pc.illegalExec(cpsr.il == 1);
 
         // Follow slightly different semantics if a CheckerCPU object
         // is connected
@@ -1595,16 +1599,20 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
               // can't be an atomic translation because that causes problems
               // with unexpected atomic snoop requests.
               warn("Translating via MISCREG(%d) in functional mode! Fix Me!\n", misc_reg);
-              Request req(0, val, 0, flags,  Request::funcMasterId,
-                          tc->pcState().pc(), tc->contextId());
+
+              auto req = std::make_shared<Request>(
+                  0, val, 0, flags,  Request::funcMasterId,
+                  tc->pcState().pc(), tc->contextId());
+
               fault = getDTBPtr(tc)->translateFunctional(
-                      &req, tc, mode, tranType);
+                      req, tc, mode, tranType);
+
               TTBCR ttbcr = readMiscRegNoEffect(MISCREG_TTBCR);
               HCR   hcr   = readMiscRegNoEffect(MISCREG_HCR);
 
               MiscReg newVal;
               if (fault == NoFault) {
-                  Addr paddr = req.getPaddr();
+                  Addr paddr = req->getPaddr();
                   if (haveLPAE && (ttbcr.eae || tranType & TLB::HypMode ||
                      ((tranType & TLB::S1S2NsTran) && hcr.vm) )) {
                       newVal = (paddr & mask(39, 12)) |
@@ -1774,7 +1782,7 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
           case MISCREG_AT_S1E3R_Xt:
           case MISCREG_AT_S1E3W_Xt:
             {
-                RequestPtr req = new Request;
+                RequestPtr req = std::make_shared<Request>();
                 Request::Flags flags = 0;
                 BaseTLB::Mode mode = BaseTLB::Read;
                 TLB::ArmTranslationType tranType = TLB::NormalTran;
@@ -1893,7 +1901,6 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
                             "MISCREG: Translated addr %#x fault fsr %#x: PAR: %#x\n",
                             val, fsr, newVal);
                 }
-                delete req;
                 setMiscRegNoEffect(MISCREG_PAR_EL1, newVal);
                 return;
             }
@@ -1909,6 +1916,9 @@ ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
             break;
 
           // Generic Timer registers
+          case MISCREG_CNTHV_CTL_EL2:
+          case MISCREG_CNTHV_CVAL_EL2:
+          case MISCREG_CNTHV_TVAL_EL2:
           case MISCREG_CNTFRQ ... MISCREG_CNTHP_CTL:
           case MISCREG_CNTPCT ... MISCREG_CNTHP_CVAL:
           case MISCREG_CNTKCTL_EL1 ... MISCREG_CNTV_CVAL_EL0:
