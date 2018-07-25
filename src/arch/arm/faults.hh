@@ -573,7 +573,6 @@ class SoftwareBreakpoint : public ArmFaultVals<SoftwareBreakpoint>
     SoftwareBreakpoint(ExtMachInst _mach_inst, uint32_t _iss);
 
     bool routeToHyp(ThreadContext *tc) const override;
-    ExceptionClass ec(ThreadContext *tc) const override;
 };
 
 // A fault that flushes the pipe, excluding the faulting instructions

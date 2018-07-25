@@ -36,7 +36,7 @@
 
 class UFSInterface : public DmaDevice,
                      public SimpleSSD::HIL::UFS::Interface,
-                     public SimpleSSD::Simulator {
+                     public EventEngine {
  private:
   AddrRangeList getAddrRanges() const override;
   Tick read(PacketPtr pkt) override;
@@ -61,10 +61,6 @@ class UFSInterface : public DmaDevice,
   bool dmaReadPending;
   bool dmaWritePending;
 
-  // Simulator
-  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
-  SimpleSSD::Event counter;
-
   // Stats
   EventFunctionWrapper statUpdateEvent;
   Stats::Scalar *pStats;
@@ -84,15 +80,6 @@ class UFSInterface : public DmaDevice,
   void regStats() override;
   void resetStats() override;
   void updateStats();
-
-  // Simulator
-  uint64_t getCurrentTick() override;
-
-  SimpleSSD::Event allocateEvent(SimpleSSD::EventFunction) override;
-  void scheduleEvent(SimpleSSD::Event, uint64_t) override;
-  void descheduleEvent(SimpleSSD::Event) override;
-  bool isScheduled(SimpleSSD::Event) override;
-  void deallocateEvent(SimpleSSD::Event) override;
 
   // Interface <-> Controller
   void dmaRead(uint64_t, uint64_t, uint8_t *, SimpleSSD::DMAFunction &,

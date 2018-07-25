@@ -47,6 +47,7 @@
 #include "base/random.hh"
 #include "base/trace.hh"
 #include "debug/TrafficGen.hh"
+#include "proto/packet.pb.h"
 
 void
 RandomGen::enter()

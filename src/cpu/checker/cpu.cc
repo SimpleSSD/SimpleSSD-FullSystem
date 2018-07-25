@@ -69,6 +69,7 @@ CheckerCPU::CheckerCPU(Params *p)
     : BaseCPU(p, true), systemPtr(NULL), icachePort(NULL), dcachePort(NULL),
       tc(NULL), thread(NULL)
 {
+    memReq = NULL;
     curStaticInst = NULL;
     curMacroStaticInst = NULL;
 
@@ -155,28 +156,27 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size,
 
     // Need to account for multiple accesses like the Atomic and TimingSimple
     while (1) {
-        auto mem_req = std::make_shared<Request>(
-            0, addr, size, flags, masterId,
-            thread->pcState().instAddr(), tc->contextId());
+        memReq = new Request(0, addr, size, flags, masterId,
+                             thread->pcState().instAddr(), tc->contextId());
 
         // translate to physical address
-        fault = dtb->translateFunctional(mem_req, tc, BaseTLB::Read);
+        fault = dtb->translateFunctional(memReq, tc, BaseTLB::Read);
 
         if (!checked_flags && fault == NoFault && unverifiedReq) {
-            flags_match = checkFlags(unverifiedReq, mem_req->getVaddr(),
-                                     mem_req->getPaddr(), mem_req->getFlags());
-            pAddr = mem_req->getPaddr();
+            flags_match = checkFlags(unverifiedReq, memReq->getVaddr(),
+                                     memReq->getPaddr(), memReq->getFlags());
+            pAddr = memReq->getPaddr();
             checked_flags = true;
         }
 
         // Now do the access
         if (fault == NoFault &&
-            !mem_req->getFlags().isSet(Request::NO_ACCESS)) {
-            PacketPtr pkt = Packet::createRead(mem_req);
+            !memReq->getFlags().isSet(Request::NO_ACCESS)) {
+            PacketPtr pkt = Packet::createRead(memReq);
 
             pkt->dataStatic(data);
 
-            if (!(mem_req->isUncacheable() || mem_req->isMmappedIpr())) {
+            if (!(memReq->isUncacheable() || memReq->isMmappedIpr())) {
                 // Access memory to see if we have the same data
                 dcachePort->sendFunctional(pkt);
             } else {
@@ -184,14 +184,22 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size,
                 memcpy(data, unverifiedMemData, size);
             }
 
+            delete memReq;
+            memReq = NULL;
             delete pkt;
         }
 
         if (fault != NoFault) {
-            if (mem_req->isPrefetch()) {
+            if (memReq->isPrefetch()) {
                 fault = NoFault;
             }
+            delete memReq;
+            memReq = NULL;
             break;
+        }
+
+        if (memReq != NULL) {
+            delete memReq;
         }
 
         //If we don't need to access a second cache line, stop now.
@@ -236,17 +244,16 @@ CheckerCPU::writeMem(uint8_t *data, unsigned size,
 
     // Need to account for a multiple access like Atomic and Timing CPUs
     while (1) {
-        auto mem_req = std::make_shared<Request>(
-            0, addr, size, flags, masterId,
-            thread->pcState().instAddr(), tc->contextId());
+        memReq = new Request(0, addr, size, flags, masterId,
+                             thread->pcState().instAddr(), tc->contextId());
 
         // translate to physical address
-        fault = dtb->translateFunctional(mem_req, tc, BaseTLB::Write);
+        fault = dtb->translateFunctional(memReq, tc, BaseTLB::Write);
 
         if (!checked_flags && fault == NoFault && unverifiedReq) {
-           flags_match = checkFlags(unverifiedReq, mem_req->getVaddr(),
-                                    mem_req->getPaddr(), mem_req->getFlags());
-           pAddr = mem_req->getPaddr();
+           flags_match = checkFlags(unverifiedReq, memReq->getVaddr(),
+                                    memReq->getPaddr(), memReq->getFlags());
+           pAddr = memReq->getPaddr();
            checked_flags = true;
         }
 
@@ -257,7 +264,9 @@ CheckerCPU::writeMem(uint8_t *data, unsigned size,
          * enabled.  This is left as future work for the Checker: LSQ snooping
          * and memory validation after stores have committed.
          */
-        bool was_prefetch = mem_req->isPrefetch();
+        bool was_prefetch = memReq->isPrefetch();
+
+        delete memReq;
 
         //If we don't need to access a second cache line, stop now.
         if (fault != NoFault || secondAddr <= addr)
@@ -328,7 +337,7 @@ CheckerCPU::dbg_vtophys(Addr addr)
  * Checks if the flags set by the Checker and Checkee match.
  */
 bool
-CheckerCPU::checkFlags(const RequestPtr &unverified_req, Addr vAddr,
+CheckerCPU::checkFlags(Request *unverified_req, Addr vAddr,
                        Addr pAddr, int flags)
 {
     Addr unverifiedVAddr = unverified_req->getVaddr();

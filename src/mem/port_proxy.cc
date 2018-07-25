@@ -47,11 +47,8 @@ PortProxy::readBlobPhys(Addr addr, Request::Flags flags,
 {
     for (ChunkGenerator gen(addr, size, _cacheLineSize); !gen.done();
          gen.next()) {
-
-        auto req = std::make_shared<Request>(
-            gen.addr(), gen.size(), flags, Request::funcMasterId);
-
-        Packet pkt(req, MemCmd::ReadReq);
+        Request req(gen.addr(), gen.size(), flags, Request::funcMasterId);
+        Packet pkt(&req, MemCmd::ReadReq);
         pkt.dataStatic(p);
         _port.sendFunctional(&pkt);
         p += gen.size();
@@ -64,11 +61,8 @@ PortProxy::writeBlobPhys(Addr addr, Request::Flags flags,
 {
     for (ChunkGenerator gen(addr, size, _cacheLineSize); !gen.done();
          gen.next()) {
-
-        auto req = std::make_shared<Request>(
-            gen.addr(), gen.size(), flags, Request::funcMasterId);
-
-        Packet pkt(req, MemCmd::WriteReq);
+        Request req(gen.addr(), gen.size(), flags, Request::funcMasterId);
+        Packet pkt(&req, MemCmd::WriteReq);
         pkt.dataStaticConst(p);
         _port.sendFunctional(&pkt);
         p += gen.size();

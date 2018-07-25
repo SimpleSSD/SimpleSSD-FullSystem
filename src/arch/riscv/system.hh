@@ -29,7 +29,6 @@
  * Authors: Ali Saidi
  *          Nathan Binkert
  *          Jaidev Patwardhan
- *          Robert Scheffel
  */
 
 #ifndef __ARCH_RISCV_SYSTEM_HH__
@@ -48,22 +47,10 @@
 
 class RiscvSystem : public System
 {
-  protected:
-    // checker for bare metal application
-    bool _isBareMetal;
-    // entry point for simulation
-    Addr _resetVect;
-
   public:
     typedef RiscvSystemParams Params;
     RiscvSystem(Params *p);
     ~RiscvSystem();
-
-    // return reset vector
-    Addr resetVect() const { return _resetVect; }
-
-    // return bare metal checker
-    bool isBareMetal() const { return _isBareMetal; }
 
     virtual bool breakpoint();
 

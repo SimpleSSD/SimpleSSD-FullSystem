@@ -113,9 +113,6 @@ BaseSetAssoc::invalidate(CacheBlk *blk)
 {
     BaseTags::invalidate(blk);
 
-    // Decrease the number of tags in use
-    tagsInUse--;
-
     // Invalidate replacement data
     replacementPolicy->invalidate(blk->replacementData);
 }
@@ -129,7 +126,7 @@ BaseSetAssoc::findBlock(Addr addr, bool is_secure) const
     return blk;
 }
 
-ReplaceableEntry*
+CacheBlk*
 BaseSetAssoc::findBlockBySetAndWay(int set, int way) const
 {
     return sets[set].blks[way];

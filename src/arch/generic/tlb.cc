@@ -37,7 +37,7 @@
 #include "sim/process.hh"
 
 Fault
-GenericTLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode)
+GenericTLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode)
 {
     if (FullSystem)
         panic("Generic translation shouldn't be used in full system mode.\n");
@@ -52,7 +52,7 @@ GenericTLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode)
 }
 
 void
-GenericTLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
+GenericTLB::translateTiming(RequestPtr req, ThreadContext *tc,
         Translation *translation, Mode mode)
 {
     assert(translation);
@@ -60,8 +60,7 @@ GenericTLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
 }
 
 Fault
-GenericTLB::finalizePhysical(const RequestPtr &req, ThreadContext *tc,
-                             Mode mode) const
+GenericTLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
 {
     return NoFault;
 }

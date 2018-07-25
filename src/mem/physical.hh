@@ -118,7 +118,11 @@ class PhysicalMemory : public Serializable
     std::string _name;
 
     // Global address map
-    AddrRangeMap<AbstractMemory*, 1> addrMap;
+    AddrRangeMap<AbstractMemory*> addrMap;
+
+    // a mutable cache for the last address map iterator that matched
+    // an address
+    mutable AddrRangeMap<AbstractMemory*>::const_iterator rangeCache;
 
     // All address-mapped memories
     std::vector<AbstractMemory*> memories;

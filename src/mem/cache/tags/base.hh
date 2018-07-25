@@ -63,7 +63,6 @@
 #include "sim/clocked_object.hh"
 
 class BaseCache;
-class ReplaceableEntry;
 
 /**
  * A common base class of Cache tagstore objects.
@@ -197,15 +196,6 @@ class BaseTags : public ClockedObject
     virtual CacheBlk * findBlock(Addr addr, bool is_secure) const = 0;
 
     /**
-     * Find a block given set and way.
-     *
-     * @param set The set of the block.
-     * @param way The way of the block.
-     * @return The block.
-     */
-    virtual ReplaceableEntry* findBlockBySetAndWay(int set, int way) const = 0;
-
-    /**
      * Align an address to the block size.
      * @param addr the address to align.
      * @return The block address.
@@ -224,6 +214,14 @@ class BaseTags : public ClockedObject
     {
         return (addr & blkMask);
     }
+
+    /**
+     * Find the cache block given set and way
+     * @param set The set of the block.
+     * @param way The way of the block.
+     * @return The cache block.
+     */
+    virtual CacheBlk *findBlockBySetAndWay(int set, int way) const = 0;
 
     /**
      * Limit the allocation for the cache ways.
@@ -254,6 +252,7 @@ class BaseTags : public ClockedObject
         assert(blk);
         assert(blk->isValid());
 
+        tagsInUse--;
         occupancies[blk->srcMasterId]--;
         totalRefs += blk->refCount;
         sampledRefs++;
@@ -262,21 +261,12 @@ class BaseTags : public ClockedObject
     }
 
     /**
-     * Find replacement victim based on address. If the address requires
-     * blocks to be evicted, their locations are listed for eviction. If a
-     * conventional cache is being used, the list only contains the victim.
-     * However, if using sector or compressed caches, the victim is one of
-     * the blocks to be evicted, but its location is the only one that will
-     * be assigned to the newly allocated block associated to this address.
-     * @sa insertBlock
+     * Find replacement victim based on address.
      *
      * @param addr Address to find a victim for.
-     * @param is_secure True if the target memory space is secure.
-     * @param evict_blks Cache blocks to be evicted.
      * @return Cache block to be replaced.
      */
-    virtual CacheBlk* findVictim(Addr addr, const bool is_secure,
-                                 std::vector<CacheBlk*>& evict_blks) const = 0;
+    virtual CacheBlk* findVictim(Addr addr) = 0;
 
     virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) = 0;
 
@@ -288,7 +278,7 @@ class BaseTags : public ClockedObject
      * @param pkt Packet holding the address to update
      * @param blk The block to update.
      */
-    virtual void insertBlock(const PacketPtr pkt, CacheBlk *blk);
+    virtual void insertBlock(PacketPtr pkt, CacheBlk *blk);
 
     /**
      * Regenerate the block address.

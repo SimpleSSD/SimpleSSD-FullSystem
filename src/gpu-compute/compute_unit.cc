@@ -655,6 +655,7 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         }
 
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
         return true;
     } else if (pkt->req->isKernel() && pkt->req->isAcquire()) {
@@ -665,6 +666,7 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         }
 
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
         return true;
     }
@@ -747,10 +749,9 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
     updatePageDivergenceDist(tmp_vaddr);
 
-    // set PC in request
-    pkt->req->setPC(gpuDynInst->wavefront()->pc());
-
-    pkt->req->setReqInstSeqNum(gpuDynInst->seqNum());
+    pkt->req->setVirt(pkt->req->getAsid(), tmp_vaddr, pkt->req->getSize(),
+                      pkt->req->getFlags(), pkt->req->masterId(),
+                      pkt->req->getPC());
 
     // figure out the type of the request to set read/write
     BaseTLB::Mode TLB_mode;
@@ -915,6 +916,7 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
         delete sender_state->tlbEntry;
         delete new_pkt;
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
     }
 }
@@ -939,13 +941,12 @@ ComputeUnit::sendSyncRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
 void
 ComputeUnit::injectGlobalMemFence(GPUDynInstPtr gpuDynInst, bool kernelLaunch,
-                                  RequestPtr req)
+                                  Request* req)
 {
     assert(gpuDynInst->isGlobalSeg());
 
     if (!req) {
-        req = std::make_shared<Request>(
-            0, 0, 0, 0, masterId(), 0, gpuDynInst->wfDynId);
+        req = new Request(0, 0, 0, 0, masterId(), 0, gpuDynInst->wfDynId);
     }
     req->setPaddr(0);
     if (kernelLaunch) {
@@ -1056,6 +1057,7 @@ ComputeUnit::DataPort::processMemRespEvent(PacketPtr pkt)
     }
 
     delete pkt->senderState;
+    delete pkt->req;
     delete pkt;
 }
 
@@ -1176,11 +1178,11 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             if (!stride)
                 break;
 
-            RequestPtr prefetch_req = std::make_shared<Request>(
-                0, vaddr + stride * pf * TheISA::PageBytes,
-                sizeof(uint8_t), 0,
-                computeUnit->masterId(),
-                0, 0, nullptr);
+            Request *prefetch_req = new Request(0, vaddr + stride * pf *
+                                                TheISA::PageBytes,
+                                                sizeof(uint8_t), 0,
+                                                computeUnit->masterId(),
+                                                0, 0, 0);
 
             PacketPtr prefetch_pkt = new Packet(prefetch_req, requestCmd);
             uint8_t foo = 0;
@@ -1203,6 +1205,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
 
             delete tlb_state->tlbEntry;
             delete tlb_state;
+            delete prefetch_pkt->req;
             delete prefetch_pkt;
         }
     }
@@ -1798,7 +1801,7 @@ ComputeUnit::sendToLds(GPUDynInstPtr gpuDynInst)
 {
     // this is just a request to carry the GPUDynInstPtr
     // back and forth
-    RequestPtr newRequest = std::make_shared<Request>();
+    Request *newRequest = new Request();
     newRequest->setPaddr(0x0);
 
     // ReadReq is not evaluted by the LDS but the Packet ctor requires this
@@ -1824,6 +1827,7 @@ ComputeUnit::LDSPort::recvTimingResp(PacketPtr packet)
     GPUDynInstPtr gpuDynInst = senderState->getMemInst();
 
     delete packet->senderState;
+    delete packet->req;
     delete packet;
 
     computeUnit->localMemoryPipe.getLMRespFIFO().push(gpuDynInst);

@@ -744,16 +744,14 @@ class FullO3CPU : public BaseO3CPU
     std::vector<ThreadID> tids;
 
     /** CPU read function, forwards read to LSQ. */
-    Fault read(const RequestPtr &req,
-               RequestPtr &sreqLow, RequestPtr &sreqHigh,
+    Fault read(RequestPtr &req, RequestPtr &sreqLow, RequestPtr &sreqHigh,
                int load_idx)
     {
         return this->iew.ldstQueue.read(req, sreqLow, sreqHigh, load_idx);
     }
 
     /** CPU write function, forwards write to LSQ. */
-    Fault write(const RequestPtr &req,
-                const RequestPtr &sreqLow, const RequestPtr &sreqHigh,
+    Fault write(RequestPtr &req, RequestPtr &sreqLow, RequestPtr &sreqHigh,
                 uint8_t *data, int store_idx)
     {
         return this->iew.ldstQueue.write(req, sreqLow, sreqHigh,

@@ -136,7 +136,7 @@ MemTest::getMasterPort(const std::string &if_name, PortID idx)
 void
 MemTest::completeRequest(PacketPtr pkt, bool functional)
 {
-    const RequestPtr &req = pkt->req;
+    Request *req = pkt->req;
     assert(req->getSize() == 1);
 
     // this address is no longer outstanding
@@ -186,6 +186,8 @@ MemTest::completeRequest(PacketPtr pkt, bool functional)
             numWritesStat++;
         }
     }
+
+    delete pkt->req;
 
     // the packet will delete the data
     delete pkt;
@@ -244,7 +246,7 @@ MemTest::tick()
 
     bool do_functional = (random_mt.random(0, 100) < percentFunctional) &&
         !uncacheable;
-    RequestPtr req = std::make_shared<Request>(paddr, 1, flags, masterId);
+    Request *req = new Request(paddr, 1, flags, masterId);
     req->setContext(id);
 
     outstandingAddrs.insert(paddr);

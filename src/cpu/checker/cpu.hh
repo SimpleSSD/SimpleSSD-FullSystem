@@ -144,6 +144,9 @@ class CheckerCPU : public BaseCPU, public ExecContext
     // keep them all in a std::queue
     std::queue<InstResult> result;
 
+    // Pointer to the one memory request.
+    RequestPtr memReq;
+
     StaticInstPtr curStaticInst;
     StaticInstPtr curMacroStaticInst;
 
@@ -528,7 +531,7 @@ class CheckerCPU : public BaseCPU, public ExecContext
             dumpAndExit();
     }
 
-    bool checkFlags(const RequestPtr &unverified_req, Addr vAddr,
+    bool checkFlags(Request *unverified_req, Addr vAddr,
                     Addr pAddr, int flags);
 
     void dumpAndExit();
@@ -537,7 +540,7 @@ class CheckerCPU : public BaseCPU, public ExecContext
     SimpleThread *threadBase() { return thread; }
 
     InstResult unverifiedResult;
-    RequestPtr unverifiedReq;
+    Request *unverifiedReq;
     uint8_t *unverifiedMemData;
 
     bool changedPC;

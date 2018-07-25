@@ -154,7 +154,7 @@ EmulationPageTable::translate(Addr vaddr, Addr &paddr)
 }
 
 Fault
-EmulationPageTable::translate(const RequestPtr &req)
+EmulationPageTable::translate(RequestPtr req)
 {
     Addr paddr;
     assert(pageAlign(req->getVaddr() + req->getSize() - 1) ==

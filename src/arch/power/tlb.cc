@@ -145,7 +145,7 @@ TLB::probeEntry(Addr vpn,uint8_t asn) const
 }
 
 inline Fault
-TLB::checkCacheability(const RequestPtr &req)
+TLB::checkCacheability(RequestPtr &req)
 {
     Addr VAddrUncacheable = 0xA0000000;
     if ((req->getVaddr() & VAddrUncacheable) == VAddrUncacheable) {
@@ -279,7 +279,7 @@ TLB::regStats()
 }
 
 Fault
-TLB::translateInst(const RequestPtr &req, ThreadContext *tc)
+TLB::translateInst(RequestPtr req, ThreadContext *tc)
 {
     // Instruction accesses must be word-aligned
     if (req->getVaddr() & 0x3) {
@@ -298,7 +298,7 @@ TLB::translateInst(const RequestPtr &req, ThreadContext *tc)
 }
 
 Fault
-TLB::translateData(const RequestPtr &req, ThreadContext *tc, bool write)
+TLB::translateData(RequestPtr req, ThreadContext *tc, bool write)
 {
     Process * p = tc->getProcessPtr();
 
@@ -310,7 +310,7 @@ TLB::translateData(const RequestPtr &req, ThreadContext *tc, bool write)
 }
 
 Fault
-TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode)
 {
     if (FullSystem)
         fatal("translate atomic not yet implemented in full system mode.\n");
@@ -322,7 +322,7 @@ TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
 }
 
 void
-TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
+TLB::translateTiming(RequestPtr req, ThreadContext *tc,
                      Translation *translation, Mode mode)
 {
     assert(translation);
@@ -330,8 +330,7 @@ TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
 }
 
 Fault
-TLB::finalizePhysical(const RequestPtr &req,
-                      ThreadContext *tc, Mode mode) const
+TLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
 {
     return NoFault;
 }

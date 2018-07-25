@@ -64,7 +64,6 @@ from SubSystem import SubSystem
 from Graphics import ImageFormat
 from ClockedObject import ClockedObject
 from PS2 import *
-from VirtIOMMIO import MmioVirtIO
 
 # Platforms with KVM support should generally use in-kernel GIC
 # emulation. Use a GIC model that automatically switches between
@@ -420,10 +419,10 @@ class GenericTimer(ClockedObject):
     cxx_header = "dev/arm/generic_timer.hh"
     system = Param.ArmSystem(Parent.any, "system")
     gic = Param.BaseGic(Parent.any, "GIC to use for interrupting")
-    int_phys_s = Param.UInt32("Physical (S) timer interrupt number")
-    int_phys_ns = Param.UInt32("Physical (NS) timer interrupt number")
+    # @todo: for now only two timers per CPU is supported, which is the
+    # normal behaviour when security extensions are disabled.
+    int_phys = Param.UInt32("Physical timer interrupt number")
     int_virt = Param.UInt32("Virtual timer interrupt number")
-    int_hyp = Param.UInt32("Hypervisor timer interrupt number")
 
     def generateDeviceTree(self, state):
         node = FdtNode("timer")
@@ -431,12 +430,9 @@ class GenericTimer(ClockedObject):
         node.appendCompatible(["arm,cortex-a15-timer",
                                "arm,armv7-timer",
                                "arm,armv8-timer"])
-        node.append(FdtPropertyWords("interrupts", [
-            1, int(self.int_phys_s) - 16, 0xf08,
-            1, int(self.int_phys_ns) - 16, 0xf08,
-            1, int(self.int_virt) - 16, 0xf08,
-            1, int(self.int_hyp) - 16, 0xf08,
-        ]))
+        node.append(FdtPropertyWords("interrupts",
+            [1, int(self.int_phys) - 16, 0xf08,
+            1, int(self.int_virt) - 16, 0xf08]))
         clock = state.phandle(self.clk_domain.unproxy(self))
         node.append(FdtPropertyWords("clocks", clock))
 
@@ -599,8 +595,10 @@ class RealView(Platform):
         node.append(FdtPropertyWords("interrupt-parent",
                                      state.phandle(self.gic)))
 
-        for subnode in self.recurseDeviceTree(state):
-            node.append(subnode)
+        for device in [getattr(self, c) for c in self._children]:
+            if issubclass(type(device), SimObject):
+                subnode = device.generateDeviceTree(state)
+                node.append(subnode)
 
         yield node
 
@@ -903,8 +901,7 @@ class VExpress_EMM(RealView):
         conf_base=0x30000000, conf_size='256MB', conf_device_bits=16,
         pci_pio_base=0)
 
-    generic_timer = GenericTimer(int_phys_s=29, int_phys_ns=30,
-                                 int_virt=27, int_hyp=26)
+    generic_timer = GenericTimer(int_phys=29, int_virt=27)
     timer0 = Sp804(int_num0=34, int_num1=34, pio_addr=0x1C110000, clock0='1MHz', clock1='1MHz')
     timer1 = Sp804(int_num0=35, int_num1=35, pio_addr=0x1C120000, clock0='1MHz', clock1='1MHz')
     clcd   = Pl111(pio_addr=0x1c1f0000, int_num=46)
@@ -1004,7 +1001,7 @@ class VExpress_EMM64(VExpress_EMM):
         cur_sys.atags_addr = 0x8000000
         cur_sys.load_offset = 0x80000000
 
-class VExpress_GEM5_V1_Base(RealView):
+class VExpress_GEM5_V1(RealView):
     """
 The VExpress gem5 memory map is loosely based on a modified
 Versatile Express RS1 memory map.
@@ -1045,8 +1042,6 @@ Memory map:
        0x1c0a0000-0x1c0affff: UART1 (reserved)
        0x1c0b0000-0x1c0bffff: UART2 (reserved)
        0x1c0c0000-0x1c0cffff: UART3 (reserved)
-       0x1c130000-0x1c13ffff: VirtIO (gem5/FM extension)
-       0x1c140000-0x1c14ffff: VirtIO (gem5/FM extension)
        0x1c170000-0x1c17ffff: RTC
 
    0x20000000-0x3fffffff: On-chip peripherals:
@@ -1092,8 +1087,6 @@ Interrupts:
         49   : UFS Host Controller
     95-255: On-chip interrupt sources (we use these for
             gem5-specific devices, SPIs)
-         74    : VirtIO (gem5/FM extension)
-         75    : VirtIO (gem5/FM extension)
          95    : HDLCD
          96- 98: GPU (reserved)
         100-103: PCI
@@ -1127,15 +1120,18 @@ Interrupts:
         Gicv2mFrame(spi_base=256, spi_len=64, addr=0x2c1c0000),
     ]
 
-    generic_timer = GenericTimer(int_phys_s=29, int_phys_ns=30,
-                                 int_virt=27, int_hyp=26)
+    generic_timer = GenericTimer(int_phys=29, int_virt=27)
+
+    hdlcd  = HDLcd(pxl_clk=dcc.osc_pxl,
+                   pio_addr=0x2b000000, int_num=95)
 
     ufs = UFSInterface(pio_addr=0x2e000000, int_num=49)
 
     def _on_chip_devices(self):
         return [
             self.gic, self.vgic, self.gicv2m,
-            self.ufs, self.generic_timer,
+            self.hdlcd, self.ufs,
+            self.generic_timer,
         ]
 
     ### Off-chip devices ###
@@ -1157,12 +1153,6 @@ Interrupts:
 
     energy_ctrl = EnergyCtrl(pio_addr=0x10000000)
 
-    vio = [
-        MmioVirtIO(pio_addr=0x1c130000, pio_size=0x1000,
-                   interrupt=ArmSPI(num=74)),
-        MmioVirtIO(pio_addr=0x1c140000, pio_size=0x1000,
-                   interrupt=ArmSPI(num=75)),
-    ]
 
     def _off_chip_devices(self):
         return [
@@ -1174,8 +1164,6 @@ Interrupts:
             self.pci_host,
             self.energy_ctrl,
             self.clock24MHz,
-            self.vio[0],
-            self.vio[1],
         ]
 
     def attachPciDevice(self, device, *args, **kwargs):
@@ -1199,7 +1187,7 @@ Interrupts:
 
     def generateDeviceTree(self, state):
         # Generate using standard RealView function
-        dt = list(super(VExpress_GEM5_V1_Base, self).generateDeviceTree(state))
+        dt = list(super(VExpress_GEM5_V1, self).generateDeviceTree(state))
         if len(dt) > 1:
             raise Exception("System returned too many DT nodes")
         node = dt[0]
@@ -1210,13 +1198,3 @@ Interrupts:
         node.append(FdtPropertyWords("arm,vexpress,site", [0xf]))
 
         yield node
-
-
-class VExpress_GEM5_V1(VExpress_GEM5_V1_Base):
-    hdlcd  = HDLcd(pxl_clk=VExpress_GEM5_V1_Base.dcc.osc_pxl,
-                   pio_addr=0x2b000000, int_num=95)
-
-    def _on_chip_devices(self):
-        return super(VExpress_GEM5_V1,self)._on_chip_devices() + [
-                self.hdlcd,
-            ]

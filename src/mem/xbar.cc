@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015, 2018 ARM Limited
+ * Copyright (c) 2011-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -321,34 +321,41 @@ BaseXBar::Layer<SrcType,DstType>::recvRetry()
 }
 
 PortID
-BaseXBar::findPort(AddrRange addr_range)
+BaseXBar::findPort(Addr addr)
 {
     // we should never see any address lookups before we've got the
     // ranges of all connected slave modules
     assert(gotAllAddrRanges);
 
+    // Check the cache
+    PortID dest_id = checkPortCache(addr);
+    if (dest_id != InvalidPortID)
+        return dest_id;
+
     // Check the address map interval tree
-    auto i = portMap.contains(addr_range);
+    auto i = portMap.find(addr);
     if (i != portMap.end()) {
-        return i->second;
+        dest_id = i->second;
+        updatePortCache(dest_id, i->first);
+        return dest_id;
     }
 
     // Check if this matches the default range
     if (useDefaultRange) {
-        if (addr_range.isSubset(defaultRange)) {
-            DPRINTF(AddrRanges, "  found addr %s on default\n",
-                    addr_range.to_string());
+        if (defaultRange.contains(addr)) {
+            DPRINTF(AddrRanges, "  found addr %#llx on default\n",
+                    addr);
             return defaultPortID;
         }
     } else if (defaultPortID != InvalidPortID) {
-        DPRINTF(AddrRanges, "Unable to find destination for %s, "
-                "will use default port\n", addr_range.to_string());
+        DPRINTF(AddrRanges, "Unable to find destination for addr %#llx, "
+                "will use default port\n", addr);
         return defaultPortID;
     }
 
     // we should use the range for the default port and it did not
     // match, or the default port is not set
-    fatal("Unable to find destination for %s on %s\n", addr_range.to_string(),
+    fatal("Unable to find destination for addr %#llx on %s\n", addr,
           name());
 }
 
@@ -413,9 +420,8 @@ BaseXBar::recvRangeChange(PortID master_port_id)
             DPRINTF(AddrRanges, "Adding range %s for id %d\n",
                     r.to_string(), master_port_id);
             if (portMap.insert(r, master_port_id) == portMap.end()) {
-                PortID conflict_id = portMap.intersects(r)->second;
-                fatal("%s has two ports responding within range "
-                      "%s:\n\t%s\n\t%s\n",
+                PortID conflict_id = portMap.find(r)->second;
+                fatal("%s has two ports responding within range %s:\n\t%s\n\t%s\n",
                       name(),
                       r.to_string(),
                       masterPorts[master_port_id]->getSlavePort().name(),
@@ -490,7 +496,7 @@ BaseXBar::recvRangeChange(PortID master_port_id)
             }
         }
 
-        // also check that no range partially intersects with the
+        // also check that no range partially overlaps with the
         // default range, this has to be done after all ranges are set
         // as there are no guarantees for when the default range is
         // update with respect to the other ones
@@ -511,6 +517,8 @@ BaseXBar::recvRangeChange(PortID master_port_id)
         for (const auto& s: slavePorts)
             s->sendRangeChange();
     }
+
+    clearPortCache();
 }
 
 AddrRangeList

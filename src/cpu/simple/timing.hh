@@ -124,7 +124,7 @@ class TimingSimpleCPU : public BaseSimpleCPU
         }
 
         void
-        finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
+        finish(const Fault &fault, RequestPtr req, ThreadContext *tc,
                BaseTLB::Mode mode)
         {
             cpu->sendFetch(fault, req, tc);
@@ -133,18 +133,15 @@ class TimingSimpleCPU : public BaseSimpleCPU
     FetchTranslation fetchTranslation;
 
     void threadSnoop(PacketPtr pkt, ThreadID sender);
-    void sendData(const RequestPtr &req,
-                  uint8_t *data, uint64_t *res, bool read);
-    void sendSplitData(const RequestPtr &req1, const RequestPtr &req2,
-                       const RequestPtr &req,
+    void sendData(RequestPtr req, uint8_t *data, uint64_t *res, bool read);
+    void sendSplitData(RequestPtr req1, RequestPtr req2, RequestPtr req,
                        uint8_t *data, bool read);
 
     void translationFault(const Fault &fault);
 
-    PacketPtr buildPacket(const RequestPtr &req, bool read);
+    PacketPtr buildPacket(RequestPtr req, bool read);
     void buildSplitPacket(PacketPtr &pkt1, PacketPtr &pkt2,
-            const RequestPtr &req1, const RequestPtr &req2,
-            const RequestPtr &req,
+            RequestPtr req1, RequestPtr req2, RequestPtr req,
             uint8_t *data, bool read);
 
     bool handleReadPacket(PacketPtr pkt);
@@ -292,8 +289,7 @@ class TimingSimpleCPU : public BaseSimpleCPU
                    Addr addr, Request::Flags flags, uint64_t *res) override;
 
     void fetch();
-    void sendFetch(const Fault &fault,
-                   const RequestPtr &req, ThreadContext *tc);
+    void sendFetch(const Fault &fault, RequestPtr req, ThreadContext *tc);
     void completeIfetch(PacketPtr );
     void completeDataAccess(PacketPtr pkt);
     void advanceInst(const Fault &fault);

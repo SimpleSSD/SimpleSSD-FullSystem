@@ -206,10 +206,8 @@ MasterPort::sendRetryResp()
 void
 MasterPort::printAddr(Addr a)
 {
-    auto req = std::make_shared<Request>(
-        a, 1, 0, Request::funcMasterId);
-
-    Packet pkt(req, MemCmd::PrintReq);
+    Request req(a, 1, 0, Request::funcMasterId);
+    Packet pkt(&req, MemCmd::PrintReq);
     Packet::PrintReqState prs(std::cerr);
     pkt.senderState = &prs;
 

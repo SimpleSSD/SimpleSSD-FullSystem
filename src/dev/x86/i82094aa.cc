@@ -92,6 +92,7 @@ Tick
 X86ISA::I82094AA::recvResponse(PacketPtr pkt)
 {
     // Packet instantiated calling sendMessage() in signalInterrupt()
+    delete pkt->req;
     delete pkt;
     return 0;
 }

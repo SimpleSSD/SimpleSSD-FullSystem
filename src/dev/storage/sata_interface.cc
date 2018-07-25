@@ -34,6 +34,7 @@
 
 SATAInterface::SATAInterface(Params *p)
     : PciDevice(p),
+      EventEngine(this),
       configPath(p->SSDConfig),
       IS(0),
       ISold(0),
@@ -471,83 +472,6 @@ void SATAInterface::updateStats() {
   }
 
   schedule(statUpdateEvent, curTick() + STAT_UPDATE_PERIOD);
-}
-
-uint64_t SATAInterface::getCurrentTick() {
-  return curTick();
-}
-
-SimpleSSD::Event SATAInterface::allocateEvent(SimpleSSD::EventFunction func) {
-  std::string name("SimpleSSD_Event_");
-
-  name += std::to_string(counter++);
-
-  auto iter = eventList.insert(
-      {counter, EventFunctionWrapper([func]() { func(curTick()); }, name)});
-
-  if (!iter.second) {
-    SimpleSSD::panic("Fail to allocate event");
-  }
-
-  return counter;
-}
-
-void SATAInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    if (iter->second.scheduled()) {
-      SimpleSSD::warn("Event %" PRIu64 " rescheduled from %" PRIu64
-                      " to %" PRIu64,
-                      eid, iter->second.when(), tick);
-
-      reschedule(iter->second, tick);
-    }
-    else {
-      schedule(iter->second, tick);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-void SATAInterface::descheduleEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    if (iter->second.scheduled()) {
-      deschedule(iter->second);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-bool SATAInterface::isScheduled(SimpleSSD::Event eid) {
-  bool ret = false;
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    ret = iter->second.scheduled();
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-
-  return ret;
-}
-
-void SATAInterface::deallocateEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    eventList.erase(iter);
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
 }
 
 SATAInterface *SATAInterfaceParams::create() {

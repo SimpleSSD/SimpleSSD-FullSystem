@@ -142,7 +142,7 @@ TLB::probeEntry(Addr vpn, uint8_t asn) const
 }
 
 inline Fault
-TLB::checkCacheability(const RequestPtr &req)
+TLB::checkCacheability(RequestPtr &req)
 {
     Addr VAddrUncacheable = 0xA0000000;
     // In MIPS, cacheability is controlled by certain bits of the virtual
@@ -282,7 +282,7 @@ TLB::regStats()
 }
 
 Fault
-TLB::translateInst(const RequestPtr &req, ThreadContext *tc)
+TLB::translateInst(RequestPtr req, ThreadContext *tc)
 {
     if (FullSystem)
         panic("translateInst not implemented in MIPS.\n");
@@ -297,7 +297,7 @@ TLB::translateInst(const RequestPtr &req, ThreadContext *tc)
 }
 
 Fault
-TLB::translateData(const RequestPtr &req, ThreadContext *tc, bool write)
+TLB::translateData(RequestPtr req, ThreadContext *tc, bool write)
 {
     if (FullSystem)
         panic("translateData not implemented in MIPS.\n");
@@ -312,7 +312,7 @@ TLB::translateData(const RequestPtr &req, ThreadContext *tc, bool write)
 }
 
 Fault
-TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode)
 {
     if (mode == Execute)
         return translateInst(req, tc);
@@ -321,7 +321,7 @@ TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
 }
 
 void
-TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
+TLB::translateTiming(RequestPtr req, ThreadContext *tc,
         Translation *translation, Mode mode)
 {
     assert(translation);
@@ -329,8 +329,7 @@ TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
 }
 
 Fault
-TLB::finalizePhysical(const RequestPtr &req,
-                      ThreadContext *tc, Mode mode) const
+TLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
 {
     return NoFault;
 }

@@ -164,6 +164,8 @@ AddLocalOption('--with-ubsan', dest='with_ubsan', action='store_true',
                help='Build with Undefined Behavior Sanitizer if available')
 AddLocalOption('--with-asan', dest='with_asan', action='store_true',
                help='Build with Address Sanitizer if available')
+AddLocalOption('--debug-simplessd', dest='debug_simplessd', action='store_true',
+               help='Build SimpleSSD in debug mode')
 
 if GetOption('no_lto') and GetOption('force_lto'):
     print('--no-lto and --force-lto are mutually exclusive')
@@ -746,13 +748,9 @@ if main['USE_PYTHON']:
 
     # verify that this stuff works
     if not conf.CheckHeader('Python.h', '<>'):
-        print("Error: Check failed for Python.h header in", py_includes)
-        print("Two possible reasons:")
-        print("1. Python headers are not installed (You can install the "
-              "package python-dev on Ubuntu and RedHat)")
-        print("2. SCons is using a wrong C compiler. This can happen if "
-              "CC has the wrong value.")
-        print("CC = %s" % main['CC'])
+        print("Error: can't find Python.h header in", py_includes)
+        print("Install Python headers (package python-dev on " +
+              "Ubuntu and RedHat)")
         Exit(1)
 
     for lib in py_libs:
@@ -904,6 +902,62 @@ def is_isa_kvm_compatible(isa):
 main['HAVE_PERF_ATTR_EXCLUDE_HOST'] = conf.CheckMember(
     'linux/perf_event.h', 'struct perf_event_attr', 'exclude_host')
 
+
+# Build SimpleSSD library and add it to LIB
+print("Info: Building SimpleSSD.")
+
+jobs = GetOption('num_jobs')
+
+workdir = './build/simplessd'
+drampower = './ext/drampower/src'
+simplessd = './src/dev/storage/simplessd'
+
+workdir = abspath(workdir)
+drampower = abspath(drampower)
+simplessd = abspath(simplessd)
+
+if not isdir(workdir):
+    mkdir(workdir)
+if not isfile(joinpath(simplessd, 'CMakeLists.txt')):
+    print(termcap.Red + termcap.Bold +
+          "Error: SimpleSSD directory does not exists.\n" +
+          "  Check that you initialized submodule." +
+          termcap.Normal)
+    Exit(1)
+
+cmdline = ['cmake', '-DDRAMPOWER_SOURCE_DIR=' + drampower]
+
+if GetOption('debug_simplessd'):
+    cmdline.append('-DDEBUG_BUILD=on')
+else:
+    cmdline.append('-DDEBUG_BUILD=off')
+
+cmdline.append(simplessd)
+
+ret = subprocess.Popen(cmdline, cwd=workdir).wait()
+
+if ret == 1:
+    print(termcap.Red + termcap.Bold +
+          "Error: Generating build script of SimpleSSD failed." +
+          termcap.Normal)
+    Exit(1)
+elif ret > 1:
+    print(termcap.Red + termcap.Bold +
+          "Error: Generating build script of SimpleSSD failed.\n" +
+          "  cmake command may not exists." +
+          termcap.Normal)
+    Exit(1)
+
+ret = subprocess.Popen(['make', '-j' + str(jobs)],
+                       cwd=workdir).wait()
+
+if ret > 0:
+    print(termcap.Red + termcap.Bold +
+          "Error: Build of SimpleSSD failed." + termcap.Normal)
+    Exit(1)
+
+main.Append(LINKFLAGS=['-L' + workdir])
+main.Append(LIBS=['simplessd', 'mcpat'])
 
 ######################################################################
 #

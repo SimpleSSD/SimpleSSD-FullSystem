@@ -186,6 +186,7 @@ RubyTester::CpuPort::recvTimingResp(PacketPtr pkt)
     // Now that the tester has completed, delete the senderState
     // (includes sublock) and the packet, then return
     delete pkt->senderState;
+    delete pkt->req;
     delete pkt;
     return true;
 }

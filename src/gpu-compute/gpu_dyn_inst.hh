@@ -382,7 +382,7 @@ class GPUDynInst : public GPUExecContext
     }
 
     void
-    setRequestFlags(RequestPtr req, bool setMemOrder=true)
+    setRequestFlags(Request *req, bool setMemOrder=true)
     {
         // currently these are the easy scopes to deduce
         if (isPrivateSeg()) {

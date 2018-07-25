@@ -21,9 +21,12 @@
 #define __DEV_STORAGE_DEF_HH__
 
 #include <cinttypes>
+#include <unordered_map>
 
 #include "base/callback.hh"
 #include "dev/storage/simplessd/sim/dma_interface.hh"
+#include "dev/storage/simplessd/sim/simulator.hh"
+#include "sim/sim_object.hh"
 
 #define STAT_UPDATE_PERIOD 1000000
 
@@ -43,21 +46,37 @@ typedef struct _DMAEntry {
   SimpleSSD::DMAFunction func;
 
   _DMAEntry(SimpleSSD::DMAFunction &f)
-      : beginAt(0),
-        finishedAt(0),
-        addr(0),
-        size(0),
-        buffer(nullptr),
-        context(nullptr),
-        func(f) {}
+      : beginAt(0), finishedAt(0), addr(0), size(0), buffer(nullptr),
+        context(nullptr), func(f) {}
 } DMAEntry;
 
 class ExitCallback : public Callback {
- protected:
+protected:
   void autoDestruct() override;
 
- public:
+public:
   void process() override;
+};
+
+class EventEngine : public SimpleSSD::Simulator {
+protected:
+  SimObject *pObject;
+
+  // Simulator
+  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
+  SimpleSSD::Event counter;
+
+public:
+  EventEngine(SimObject *);
+  virtual ~EventEngine() {}
+
+  uint64_t getCurrentTick() override;
+
+  SimpleSSD::Event allocateEvent(SimpleSSD::EventFunction) override;
+  void scheduleEvent(SimpleSSD::Event, uint64_t) override;
+  void descheduleEvent(SimpleSSD::Event) override;
+  bool isScheduled(SimpleSSD::Event, uint64_t * = nullptr) override;
+  void deallocateEvent(SimpleSSD::Event) override;
 };
 
 #endif

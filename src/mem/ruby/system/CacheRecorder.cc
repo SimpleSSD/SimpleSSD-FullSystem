@@ -85,9 +85,9 @@ CacheRecorder::enqueueNextFlushRequest()
     if (m_records_flushed < m_records.size()) {
         TraceRecord* rec = m_records[m_records_flushed];
         m_records_flushed++;
-        auto req = std::make_shared<Request>(rec->m_data_address,
-                                             m_block_size_bytes, 0,
-                                             Request::funcMasterId);
+        Request* req = new Request(rec->m_data_address,
+                                   m_block_size_bytes, 0,
+                                   Request::funcMasterId);
         MemCmd::Command requestType = MemCmd::FlushReq;
         Packet *pkt = new Packet(req, requestType);
 
@@ -112,24 +112,21 @@ CacheRecorder::enqueueNextFetchRequest()
 
         for (int rec_bytes_read = 0; rec_bytes_read < m_block_size_bytes;
                 rec_bytes_read += RubySystem::getBlockSizeBytes()) {
-            RequestPtr req;
+            Request* req = nullptr;
             MemCmd::Command requestType;
 
             if (traceRecord->m_type == RubyRequestType_LD) {
                 requestType = MemCmd::ReadReq;
-                req = std::make_shared<Request>(
-                    traceRecord->m_data_address + rec_bytes_read,
+                req = new Request(traceRecord->m_data_address + rec_bytes_read,
                     RubySystem::getBlockSizeBytes(), 0, Request::funcMasterId);
             }   else if (traceRecord->m_type == RubyRequestType_IFETCH) {
                 requestType = MemCmd::ReadReq;
-                req = std::make_shared<Request>(
-                        traceRecord->m_data_address + rec_bytes_read,
+                req = new Request(traceRecord->m_data_address + rec_bytes_read,
                         RubySystem::getBlockSizeBytes(),
                         Request::INST_FETCH, Request::funcMasterId);
             }   else {
                 requestType = MemCmd::WriteReq;
-                req = std::make_shared<Request>(
-                    traceRecord->m_data_address + rec_bytes_read,
+                req = new Request(traceRecord->m_data_address + rec_bytes_read,
                     RubySystem::getBlockSizeBytes(), 0, Request::funcMasterId);
             }
 

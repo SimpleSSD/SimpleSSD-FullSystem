@@ -1857,34 +1857,6 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                         return MISCREG_ESR_EL1;
                     }
                     break;
-                  case 3:
-                    switch (op2) {
-                      case 0:
-                        return MISCREG_ERRIDR_EL1;
-                      case 1:
-                        return MISCREG_ERRSELR_EL1;
-                    }
-                    break;
-                  case 4:
-                    switch (op2) {
-                      case 0:
-                        return MISCREG_ERXFR_EL1;
-                      case 1:
-                        return MISCREG_ERXCTLR_EL1;
-                      case 2:
-                        return MISCREG_ERXSTATUS_EL1;
-                      case 3:
-                        return MISCREG_ERXADDR_EL1;
-                    }
-                    break;
-                  case 5:
-                    switch (op2) {
-                      case 0:
-                        return MISCREG_ERXMISC0_EL1;
-                      case 1:
-                        return MISCREG_ERXMISC1_EL1;
-                    }
-                    break;
                 }
                 break;
               case 4:
@@ -1907,8 +1879,6 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                     switch (op2) {
                       case 0:
                         return MISCREG_ESR_EL2;
-                      case 3:
-                        return MISCREG_VSESR_EL2;
                     }
                     break;
                   case 3:
@@ -2134,8 +2104,6 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                     switch (op2) {
                       case 0:
                         return MISCREG_ISR_EL1;
-                      case 1:
-                        return MISCREG_DISR_EL1;
                     }
                     break;
                 }
@@ -2148,12 +2116,6 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                         return MISCREG_VBAR_EL2;
                       case 1:
                         return MISCREG_RVBAR_EL2;
-                    }
-                    break;
-                  case 1:
-                    switch (op2) {
-                      case 1:
-                        return MISCREG_VDISR_EL2;
                     }
                     break;
                 }
@@ -2329,16 +2291,6 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                         return MISCREG_CNTHP_CTL_EL2;
                       case 2:
                         return MISCREG_CNTHP_CVAL_EL2;
-                    }
-                    break;
-                  case 3:
-                    switch (op2) {
-                      case 0:
-                        return MISCREG_CNTHV_TVAL_EL2;
-                      case 1:
-                        return MISCREG_CNTHV_CTL_EL2;
-                      case 2:
-                        return MISCREG_CNTHV_CVAL_EL2;
                     }
                     break;
                 }
@@ -3224,6 +3176,7 @@ ISA::initializeMiscRegMetadata()
       .privSecure(!aarch32EL3)
       .monSecure(0);
     InitReg(MISCREG_CNTP_TVAL_S)
+      .unimplemented()
       .bankedChild()
       .secure().user(1);
     InitReg(MISCREG_CNTP_CTL)
@@ -3234,6 +3187,7 @@ ISA::initializeMiscRegMetadata()
       .privSecure(!aarch32EL3)
       .monSecure(0);
     InitReg(MISCREG_CNTP_CTL_S)
+      .unimplemented()
       .bankedChild()
       .secure().user(1);
     InitReg(MISCREG_CNTV_TVAL)
@@ -3241,10 +3195,13 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_CNTV_CTL)
       .allPrivileges();
     InitReg(MISCREG_CNTHCTL)
+      .unimplemented()
       .hypWrite().monNonSecureRead();
     InitReg(MISCREG_CNTHP_TVAL)
+      .unimplemented()
       .hypWrite().monNonSecureRead();
     InitReg(MISCREG_CNTHP_CTL)
+      .unimplemented()
       .hypWrite().monNonSecureRead();
     InitReg(MISCREG_IL1DATA0)
       .unimplemented()
@@ -3299,6 +3256,7 @@ ISA::initializeMiscRegMetadata()
       .privSecure(!aarch32EL3)
       .monSecure(0);
     InitReg(MISCREG_CNTP_CVAL_S)
+      .unimplemented()
       .bankedChild()
       .secure().user(1);
     InitReg(MISCREG_CNTV_CVAL)
@@ -3306,6 +3264,7 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_CNTVOFF)
       .hyp().monNonSecure();
     InitReg(MISCREG_CNTHP_CVAL)
+      .unimplemented()
       .hypWrite().monNonSecureRead();
     InitReg(MISCREG_CPUMERRSR)
       .unimplemented()
@@ -3977,23 +3936,31 @@ ISA::initializeMiscRegMetadata()
       .hyp().mon()
       .mapsTo(MISCREG_CNTVOFF); /* 64b */
     InitReg(MISCREG_CNTHCTL_EL2)
-      .mon().hyp()
+      .unimplemented()
+      .warnNotFail()
+      .mon().monNonSecureWrite(0).hypWrite()
       .mapsTo(MISCREG_CNTHCTL);
     InitReg(MISCREG_CNTHP_TVAL_EL2)
-      .mon().hyp()
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite()
       .mapsTo(MISCREG_CNTHP_TVAL);
     InitReg(MISCREG_CNTHP_CTL_EL2)
-      .mon().hyp()
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite()
       .mapsTo(MISCREG_CNTHP_CTL);
     InitReg(MISCREG_CNTHP_CVAL_EL2)
-      .mon().hyp()
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite()
       .mapsTo(MISCREG_CNTHP_CVAL); /* 64b */
     InitReg(MISCREG_CNTPS_TVAL_EL1)
-      .mon().privSecure();
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite();
     InitReg(MISCREG_CNTPS_CTL_EL1)
-      .mon().privSecure();
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite();
     InitReg(MISCREG_CNTPS_CVAL_EL1)
-      .mon().privSecure();
+      .unimplemented()
+      .mon().monNonSecureWrite(0).hypWrite();
     InitReg(MISCREG_IL1DATA0_EL1)
       .allPrivileges().exceptUserMode();
     InitReg(MISCREG_IL1DATA1_EL1)
@@ -4028,12 +3995,6 @@ ISA::initializeMiscRegMetadata()
       .allPrivileges().exceptUserMode().writes(0);
     InitReg(MISCREG_CONTEXTIDR_EL2)
       .mon().hyp();
-    InitReg(MISCREG_CNTHV_CTL_EL2)
-      .mon().hyp();
-    InitReg(MISCREG_CNTHV_CVAL_EL2)
-      .mon().hyp();
-    InitReg(MISCREG_CNTHV_TVAL_EL2)
-      .mon().hyp();
 
     // Dummy registers
     InitReg(MISCREG_NOP)
@@ -4050,41 +4011,6 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_IMPDEF_UNIMPL)
       .unimplemented()
       .warnNotFail(impdefAsNop);
-
-    // RAS extension (unimplemented)
-    InitReg(MISCREG_ERRIDR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERRSELR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXFR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXCTLR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXSTATUS_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXADDR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXMISC0_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_ERXMISC1_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_DISR_EL1)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_VSESR_EL2)
-      .unimplemented()
-      .warnNotFail();
-    InitReg(MISCREG_VDISR_EL2)
-      .unimplemented()
-      .warnNotFail();
 
     // Register mappings for some unimplemented registers:
     // ESR_EL1 -> DFSR

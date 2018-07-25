@@ -197,7 +197,7 @@ class TarmacParserRecord : public TarmacBaseRecord
     bool mismatchOnPcOrOpcode;
 
     /** Request for memory write checks. */
-    RequestPtr memReq;
+    Request memReq;
 
   protected:
     TarmacParser& parent;

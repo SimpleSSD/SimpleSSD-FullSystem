@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2018 ARM Limited
+ * Copyright (c) 2011-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -99,6 +99,8 @@ CoherentXBar::CoherentXBar(const CoherentXBarParams *p)
                                            csprintf(".respLayer%d", i)));
         snoopRespPorts.push_back(new SnoopRespPort(*bp, *this));
     }
+
+    clearPortCache();
 }
 
 CoherentXBar::~CoherentXBar()
@@ -151,9 +153,8 @@ CoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
     // and the cache responding flag should always be the same
     assert(is_express_snoop == cache_responding);
 
-    // determine the destination based on the destination address range
-    AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
-    PortID master_port_id = findPort(addr_range);
+    // determine the destination based on the address
+    PortID master_port_id = findPort(pkt->getAddr());
 
     // test if the crossbar should be considered occupied for the current
     // port, and exclude express snoops from the check
@@ -552,9 +553,7 @@ CoherentXBar::recvTimingSnoopReq(PacketPtr pkt, PortID master_port_id)
     // device responsible for the address range something is
     // wrong, hence there is nothing further to do as the packet
     // would be going back to where it came from
-    AddrRange addr_range M5_VAR_USED =
-        RangeSize(pkt->getAddr(), pkt->getSize());
-    assert(findPort(addr_range) == master_port_id);
+    assert(master_port_id == findPort(pkt->getAddr()));
 }
 
 bool
@@ -784,8 +783,7 @@ CoherentXBar::recvAtomic(PacketPtr pkt, PortID slave_port_id)
 
     // even if we had a snoop response, we must continue and also
     // perform the actual request at the destination
-    AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
-    PortID master_port_id = findPort(addr_range);
+    PortID master_port_id = findPort(pkt->getAddr());
 
     if (sink_packet) {
         DPRINTF(CoherentXBar, "%s: Not forwarding %s\n", __func__,
@@ -1009,7 +1007,7 @@ CoherentXBar::recvFunctional(PacketPtr pkt, PortID slave_port_id)
             }
         }
 
-        PortID dest_id = findPort(RangeSize(pkt->getAddr(), pkt->getSize()));
+        PortID dest_id = findPort(pkt->getAddr());
 
         masterPorts[dest_id]->sendFunctional(pkt);
     }

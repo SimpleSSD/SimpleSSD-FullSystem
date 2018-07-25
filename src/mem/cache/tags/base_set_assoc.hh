@@ -122,12 +122,20 @@ class BaseSetAssoc : public BaseTags
     virtual ~BaseSetAssoc() {};
 
     /**
-     * This function updates the tags when a block is invalidated. It also
-     * updates the replacement data.
+     * This function updates the tags when a block is invalidated but does
+     * not invalidate the block itself. It also updates the replacement data.
      *
      * @param blk The block to invalidate.
      */
     void invalidate(CacheBlk *blk) override;
+
+    /**
+     * Find the cache block given set and way
+     * @param set The set of the block.
+     * @param way The way of the block.
+     * @return The cache block.
+     */
+    CacheBlk *findBlockBySetAndWay(int set, int way) const override;
 
     /**
      * Access block and update replacement data. May not succeed, in which case
@@ -191,25 +199,12 @@ class BaseSetAssoc : public BaseTags
     CacheBlk* findBlock(Addr addr, bool is_secure) const override;
 
     /**
-     * Find a block given set and way.
-     *
-     * @param set The set of the block.
-     * @param way The way of the block.
-     * @return The block.
-     */
-    ReplaceableEntry* findBlockBySetAndWay(int set, int way) const override;
-
-    /**
-     * Find replacement victim based on address. The list of evicted blocks
-     * only contains the victim.
+     * Find replacement victim based on address.
      *
      * @param addr Address to find a victim for.
-     * @param is_secure True if the target memory space is secure.
-     * @param evict_blks Cache blocks to be evicted.
      * @return Cache block to be replaced.
      */
-    CacheBlk* findVictim(Addr addr, const bool is_secure,
-                         std::vector<CacheBlk*>& evict_blks) const override
+    CacheBlk* findVictim(Addr addr) override
     {
         // Get possible locations for the victim block
         std::vector<CacheBlk*> locations = getPossibleLocations(addr);
@@ -218,9 +213,6 @@ class BaseSetAssoc : public BaseTags
         CacheBlk* victim = static_cast<CacheBlk*>(replacementPolicy->getVictim(
                                std::vector<ReplaceableEntry*>(
                                    locations.begin(), locations.end())));
-
-        // There is only one eviction for this replacement
-        evict_blks.push_back(victim);
 
         DPRINTF(CacheRepl, "set %x, way %x: selecting blk for replacement\n",
             victim->set, victim->way);
@@ -237,7 +229,7 @@ class BaseSetAssoc : public BaseTags
      * @param addr The addr to a find possible locations for.
      * @return The possible locations.
      */
-    const std::vector<CacheBlk*> getPossibleLocations(Addr addr) const
+    const std::vector<CacheBlk*> getPossibleLocations(Addr addr)
     {
         return sets[extractSet(addr)].blks;
     }
@@ -248,13 +240,10 @@ class BaseSetAssoc : public BaseTags
      * @param pkt Packet holding the address to update
      * @param blk The block to update.
      */
-    void insertBlock(const PacketPtr pkt, CacheBlk *blk) override
+    void insertBlock(PacketPtr pkt, CacheBlk *blk) override
     {
         // Insert block
         BaseTags::insertBlock(pkt, blk);
-
-        // Increment tag counter
-        tagsInUse++;
 
         // Update replacement policy
         replacementPolicy->reset(blk->replacementData);

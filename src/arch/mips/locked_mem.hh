@@ -75,7 +75,7 @@ handleLockedSnoop(XC *xc, PacketPtr pkt, Addr cacheBlockMask)
 
 template <class XC>
 inline void
-handleLockedRead(XC *xc, const RequestPtr &req)
+handleLockedRead(XC *xc, Request *req)
 {
     xc->setMiscReg(MISCREG_LLADDR, req->getPaddr() & ~0xf);
     xc->setMiscReg(MISCREG_LLFLAG, true);
@@ -92,7 +92,7 @@ handleLockedSnoopHit(XC *xc)
 
 template <class XC>
 inline bool
-handleLockedWrite(XC *xc, const RequestPtr &req, Addr cacheBlockMask)
+handleLockedWrite(XC *xc, Request *req, Addr cacheBlockMask)
 {
     if (req->isUncacheable()) {
         // Funky Turbolaser mailbox access...don't update

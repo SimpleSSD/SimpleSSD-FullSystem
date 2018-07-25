@@ -59,6 +59,7 @@ QueuedPrefetcher::~QueuedPrefetcher()
 {
     // Delete the queued prefetch packets
     for (DeferredPacket &p : pfq) {
+        delete p.pkt->req;
         delete p.pkt;
     }
 }
@@ -77,6 +78,7 @@ QueuedPrefetcher::notify(const PacketPtr &pkt)
             while (itr != pfq.end()) {
                 if (itr->pkt->getAddr() == blk_addr &&
                     itr->pkt->isSecure() == is_secure) {
+                    delete itr->pkt->req;
                     delete itr->pkt;
                     itr = pfq.erase(itr);
                 } else {
@@ -221,8 +223,8 @@ QueuedPrefetcher::insert(AddrPriority &pf_info, bool is_secure)
     }
 
     /* Create a prefetch memory request */
-    RequestPtr pf_req =
-        std::make_shared<Request>(pf_info.first, blkSize, 0, masterId);
+    Request *pf_req =
+        new Request(pf_info.first, blkSize, 0, masterId);
 
     if (is_secure) {
         pf_req->setFlags(Request::SECURE);
@@ -253,6 +255,7 @@ QueuedPrefetcher::insert(AddrPriority &pf_info, bool is_secure)
         }
         DPRINTF(HWPrefetch, "Prefetch queue full, removing lowest priority "
                             "oldest packet, addr: %#x", it->pkt->getAddr());
+        delete it->pkt->req;
         delete it->pkt;
         pfq.erase(it);
     }

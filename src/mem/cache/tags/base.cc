@@ -80,7 +80,7 @@ BaseTags::setCache(BaseCache *_cache)
 }
 
 void
-BaseTags::insertBlock(const PacketPtr pkt, CacheBlk *blk)
+BaseTags::insertBlock(PacketPtr pkt, CacheBlk *blk)
 {
     assert(!blk->isValid());
 
@@ -99,6 +99,7 @@ BaseTags::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     blk->insert(extractTag(addr), pkt->isSecure(), master_id,
                 pkt->req->taskId());
 
+    tagsInUse++;
     if (!warmedUp && tagsInUse.value() >= warmupBound) {
         warmedUp = true;
         warmupCycle = curTick();

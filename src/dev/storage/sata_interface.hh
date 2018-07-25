@@ -33,7 +33,7 @@
 
 class SATAInterface : public PciDevice,
                       public SimpleSSD::HIL::SATA::Interface,
-                      public SimpleSSD::Simulator {
+                      public EventEngine {
  private:
   std::string configPath;
   SimpleSSD::ConfigReader conf;
@@ -64,10 +64,6 @@ class SATAInterface : public PciDevice,
   bool dmaReadPending;
   bool dmaWritePending;
 
-  // Simulator
-  std::unordered_map<SimpleSSD::Event, EventFunctionWrapper> eventList;
-  SimpleSSD::Event counter;
-
   // Stats
   EventFunctionWrapper statUpdateEvent;
   Stats::Scalar *pStats;
@@ -96,15 +92,6 @@ class SATAInterface : public PciDevice,
   void regStats() override;
   void resetStats() override;
   void updateStats();
-
-  // Simulator
-  uint64_t getCurrentTick() override;
-
-  SimpleSSD::Event allocateEvent(SimpleSSD::EventFunction) override;
-  void scheduleEvent(SimpleSSD::Event, uint64_t) override;
-  void descheduleEvent(SimpleSSD::Event) override;
-  bool isScheduled(SimpleSSD::Event) override;
-  void deallocateEvent(SimpleSSD::Event) override;
 
   // Interface <-> Controller
   void dmaRead(uint64_t, uint64_t, uint8_t *, SimpleSSD::DMAFunction &,

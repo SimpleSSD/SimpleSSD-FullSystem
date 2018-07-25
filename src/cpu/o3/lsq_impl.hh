@@ -370,6 +370,7 @@ LSQ<Impl>::recvTimingResp(PacketPtr pkt)
         }
     }
 
+    delete pkt->req;
     delete pkt;
     return true;
 }

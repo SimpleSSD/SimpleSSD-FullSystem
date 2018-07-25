@@ -244,17 +244,16 @@ Checker<Impl>::verify(DynInstPtr &completed_inst)
             // If not in the middle of a macro instruction
             if (!curMacroStaticInst) {
                 // set up memory request for instruction fetch
-                auto mem_req = std::make_shared<Request>(
-                    unverifiedInst->threadNumber, fetch_PC,
-                    sizeof(MachInst), 0, masterId, fetch_PC,
-                    thread->contextId());
+                memReq = new Request(unverifiedInst->threadNumber, fetch_PC,
+                                     sizeof(MachInst),
+                                     0,
+                                     masterId,
+                                     fetch_PC, thread->contextId());
+                memReq->setVirt(0, fetch_PC, sizeof(MachInst),
+                                Request::INST_FETCH, masterId, thread->instAddr());
 
-                mem_req->setVirt(0, fetch_PC, sizeof(MachInst),
-                                 Request::INST_FETCH, masterId,
-                                 thread->instAddr());
 
-                fault = itb->translateFunctional(
-                    mem_req, tc, BaseTLB::Execute);
+                fault = itb->translateFunctional(memReq, tc, BaseTLB::Execute);
 
                 if (fault != NoFault) {
                     if (unverifiedInst->getFault() == NoFault) {
@@ -271,6 +270,7 @@ Checker<Impl>::verify(DynInstPtr &completed_inst)
                         advancePC(NoFault);
 
                         // Give up on an ITB fault..
+                        delete memReq;
                         unverifiedInst = NULL;
                         return;
                     } else {
@@ -278,15 +278,17 @@ Checker<Impl>::verify(DynInstPtr &completed_inst)
                         // the fault and see if our results match the CPU on
                         // the next tick().
                         fault = unverifiedInst->getFault();
+                        delete memReq;
                         break;
                     }
                 } else {
-                    PacketPtr pkt = new Packet(mem_req, MemCmd::ReadReq);
+                    PacketPtr pkt = new Packet(memReq, MemCmd::ReadReq);
 
                     pkt->dataStatic(&machInst);
                     icachePort->sendFunctional(pkt);
                     machInst = gtoh(machInst);
 
+                    delete memReq;
                     delete pkt;
                 }
             }

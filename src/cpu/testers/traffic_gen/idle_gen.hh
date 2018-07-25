@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, 2017-2018 ARM Limited
+ * Copyright (c) 2012-2013, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -52,6 +52,7 @@
 #include "base/intmath.hh"
 #include "base_gen.hh"
 #include "mem/packet.hh"
+#include "proto/protoio.hh"
 
 /**
  * The idle generator does nothing.
@@ -61,8 +62,8 @@ class IdleGen : public BaseGen
 
   public:
 
-    IdleGen(BaseTrafficGen &gen, Tick _duration)
-        : BaseGen(gen, _duration)
+    IdleGen(const std::string& _name, MasterID master_id, Tick _duration)
+        : BaseGen(_name, master_id, _duration)
     { }
 
     void enter();

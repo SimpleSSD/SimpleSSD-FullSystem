@@ -468,7 +468,7 @@ BaseSimpleCPU::checkForInterrupts()
 
 
 void
-BaseSimpleCPU::setupFetchRequest(const RequestPtr &req)
+BaseSimpleCPU::setupFetchRequest(Request *req)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;

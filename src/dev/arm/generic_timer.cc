@@ -69,7 +69,6 @@ void
 SystemCounter::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(_regCntkctl);
-    SERIALIZE_SCALAR(_regCnthctl);
     SERIALIZE_SCALAR(_freq);
     SERIALIZE_SCALAR(_period);
     SERIALIZE_SCALAR(_resetTick);
@@ -82,8 +81,6 @@ SystemCounter::unserialize(CheckpointIn &cp)
     // if it isn't present.
     if (!UNSERIALIZE_OPT_SCALAR(_regCntkctl))
         _regCntkctl = 0;
-    if (!UNSERIALIZE_OPT_SCALAR(_regCnthctl))
-        _regCnthctl = 0;
     UNSERIALIZE_SCALAR(_freq);
     UNSERIALIZE_SCALAR(_period);
     UNSERIALIZE_SCALAR(_resetTick);
@@ -245,10 +242,8 @@ GenericTimer::GenericTimer(GenericTimerParams *p)
     : ClockedObject(p),
       system(*p->system),
       gic(p->gic),
-      irqPhysS(p->int_phys_s),
-      irqPhysNS(p->int_phys_ns),
-      irqVirt(p->int_virt),
-      irqHyp(p->int_hyp)
+      irqPhys(p->int_phys),
+      irqVirt(p->int_virt)
 {
     fatal_if(!p->system, "No system specified, can't instantiate timer.\n");
     system.setGenericTimer(this);
@@ -266,10 +261,8 @@ GenericTimer::serialize(CheckpointOut &cp) const
 
         // This should really be phys_timerN, but we are stuck with
         // arch_timer for backwards compatibility.
-        core.physNS.serializeSection(cp, csprintf("arch_timer%d", i));
-        core.physS.serializeSection(cp, csprintf("phys_s_timer%d", i));
+        core.phys.serializeSection(cp, csprintf("arch_timer%d", i));
         core.virt.serializeSection(cp, csprintf("virt_timer%d", i));
-        core.hyp.serializeSection(cp, csprintf("hyp_timer%d", i));
     }
 }
 
@@ -293,10 +286,8 @@ GenericTimer::unserialize(CheckpointIn &cp)
         CoreTimers &core(getTimers(i));
         // This should really be phys_timerN, but we are stuck with
         // arch_timer for backwards compatibility.
-        core.physNS.unserializeSection(cp, csprintf("arch_timer%d", i));
-        core.physS.unserializeSection(cp, csprintf("phys_s_timer%d", i));
+        core.phys.unserializeSection(cp, csprintf("arch_timer%d", i));
         core.virt.unserializeSection(cp, csprintf("virt_timer%d", i));
-        core.hyp.unserializeSection(cp, csprintf("hyp_timer%d", i));
     }
 }
 
@@ -319,8 +310,7 @@ GenericTimer::createTimers(unsigned cpus)
     timers.resize(cpus);
     for (unsigned i = old_cpu_count; i < cpus; ++i) {
         timers[i].reset(
-            new CoreTimers(*this, system, i,
-                           irqPhysS, irqPhysNS, irqVirt, irqHyp));
+            new CoreTimers(*this, system, i, irqPhys, irqVirt));
     }
 }
 
@@ -341,25 +331,23 @@ GenericTimer::setMiscReg(int reg, unsigned cpu, MiscReg val)
         systemCounter.setKernelControl(val);
         return;
 
-      case MISCREG_CNTHCTL:
-      case MISCREG_CNTHCTL_EL2:
-        systemCounter.setHypControl(val);
-        return;
-
-      // Physical timer (NS)
+      // Physical timer
+      case MISCREG_CNTP_CVAL:
       case MISCREG_CNTP_CVAL_NS:
       case MISCREG_CNTP_CVAL_EL0:
-        core.physNS.setCompareValue(val);
+        core.phys.setCompareValue(val);
         return;
 
+      case MISCREG_CNTP_TVAL:
       case MISCREG_CNTP_TVAL_NS:
       case MISCREG_CNTP_TVAL_EL0:
-        core.physNS.setTimerValue(val);
+        core.phys.setTimerValue(val);
         return;
 
+      case MISCREG_CNTP_CTL:
       case MISCREG_CNTP_CTL_NS:
       case MISCREG_CNTP_CTL_EL0:
-        core.physNS.setControl(val);
+        core.phys.setControl(val);
         return;
 
       // Count registers
@@ -392,36 +380,24 @@ GenericTimer::setMiscReg(int reg, unsigned cpu, MiscReg val)
         core.virt.setControl(val);
         return;
 
-      // Physical timer (S)
+      // PL1 phys. timer, secure
       case MISCREG_CNTP_CTL_S:
-      case MISCREG_CNTPS_CTL_EL1:
-        core.physS.setControl(val);
-        return;
-
-      case MISCREG_CNTP_CVAL_S:
       case MISCREG_CNTPS_CVAL_EL1:
-        core.physS.setCompareValue(val);
-        return;
-
-      case MISCREG_CNTP_TVAL_S:
       case MISCREG_CNTPS_TVAL_EL1:
-        core.physS.setTimerValue(val);
-        return;
+      case MISCREG_CNTPS_CTL_EL1:
+        M5_FALLTHROUGH;
 
-      // Hyp phys. timer, non-secure
-      case MISCREG_CNTHP_CTL:
-      case MISCREG_CNTHP_CTL_EL2:
-        core.hyp.setControl(val);
-        return;
-
+      // PL2 phys. timer, non-secure
+      case MISCREG_CNTHCTL:
+      case MISCREG_CNTHCTL_EL2:
       case MISCREG_CNTHP_CVAL:
       case MISCREG_CNTHP_CVAL_EL2:
-        core.hyp.setCompareValue(val);
-        return;
-
       case MISCREG_CNTHP_TVAL:
       case MISCREG_CNTHP_TVAL_EL2:
-        core.hyp.setTimerValue(val);
+      case MISCREG_CNTHP_CTL:
+      case MISCREG_CNTHP_CTL_EL2:
+        warn("Writing to unimplemented register: %s\n",
+             miscRegName[reg]);
         return;
 
       default:
@@ -445,26 +421,23 @@ GenericTimer::readMiscReg(int reg, unsigned cpu)
       case MISCREG_CNTKCTL_EL1:
         return systemCounter.getKernelControl();
 
-      case MISCREG_CNTHCTL:
-      case MISCREG_CNTHCTL_EL2:
-        return systemCounter.getHypControl();
-
       // Physical timer
-      case MISCREG_CNTP_CVAL_NS:
+      case MISCREG_CNTP_CVAL:
       case MISCREG_CNTP_CVAL_EL0:
-        return core.physNS.compareValue();
+        return core.phys.compareValue();
 
-      case MISCREG_CNTP_TVAL_NS:
+      case MISCREG_CNTP_TVAL:
       case MISCREG_CNTP_TVAL_EL0:
-        return core.physNS.timerValue();
+        return core.phys.timerValue();
 
+      case MISCREG_CNTP_CTL:
       case MISCREG_CNTP_CTL_EL0:
       case MISCREG_CNTP_CTL_NS:
-        return core.physNS.control();
+        return core.phys.control();
 
       case MISCREG_CNTPCT:
       case MISCREG_CNTPCT_EL0:
-        return core.physNS.value();
+        return core.phys.value();
 
 
       // Virtual timer
@@ -490,29 +463,24 @@ GenericTimer::readMiscReg(int reg, unsigned cpu)
 
       // PL1 phys. timer, secure
       case MISCREG_CNTP_CTL_S:
-      case MISCREG_CNTPS_CTL_EL1:
-        return core.physS.control();
-
-      case MISCREG_CNTP_CVAL_S:
       case MISCREG_CNTPS_CVAL_EL1:
-        return core.physS.compareValue();
-
-      case MISCREG_CNTP_TVAL_S:
       case MISCREG_CNTPS_TVAL_EL1:
-        return core.physS.timerValue();
+      case MISCREG_CNTPS_CTL_EL1:
+        M5_FALLTHROUGH;
 
-      // HYP phys. timer (NS)
-      case MISCREG_CNTHP_CTL:
-      case MISCREG_CNTHP_CTL_EL2:
-        return core.hyp.control();
-
+      // PL2 phys. timer, non-secure
+      case MISCREG_CNTHCTL:
+      case MISCREG_CNTHCTL_EL2:
       case MISCREG_CNTHP_CVAL:
       case MISCREG_CNTHP_CVAL_EL2:
-        return core.hyp.compareValue();
-
       case MISCREG_CNTHP_TVAL:
       case MISCREG_CNTHP_TVAL_EL2:
-        return core.hyp.timerValue();
+      case MISCREG_CNTHP_CTL:
+      case MISCREG_CNTHP_CTL_EL2:
+        warn("Reading from unimplemented register: %s\n",
+             miscRegName[reg]);
+        return 0;
+
 
       default:
         warn("Reading from unknown register: %s\n", miscRegName[reg]);

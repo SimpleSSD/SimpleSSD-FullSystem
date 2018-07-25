@@ -34,6 +34,7 @@
 
 NVMeInterface::NVMeInterface(Params *p)
     : PciDevice(p),
+      EventEngine(this),
       configPath(p->SSDConfig),
       dmaReadEvent([this]() { dmaReadDone(); }, name()),
       dmaWriteEvent([this]() { dmaWriteDone(); }, name()),
@@ -43,8 +44,7 @@ NVMeInterface::NVMeInterface(Params *p)
       oldInterruptStatus(0),
       mode(INTERRUPT_PIN),
       statUpdateEvent([this]() { updateStats(); }, name()),
-      pStats(nullptr),
-      counter(0) {
+      pStats(nullptr) {
   if (p->SSDConfig.size() == 0) {
     pController = nullptr;
 
@@ -634,93 +634,6 @@ void NVMeInterface::updateStats() {
   }
 
   schedule(statUpdateEvent, curTick() + STAT_UPDATE_PERIOD);
-}
-
-uint64_t NVMeInterface::getCurrentTick() {
-  return curTick();
-}
-
-SimpleSSD::Event NVMeInterface::allocateEvent(SimpleSSD::EventFunction func) {
-  std::string name("SimpleSSD_Event_");
-
-  name += std::to_string(counter++);
-
-  auto iter = eventList.insert(
-      {counter, EventFunctionWrapper([func]() { func(curTick()); }, name)});
-
-  if (!iter.second) {
-    SimpleSSD::panic("Fail to allocate event");
-  }
-
-  return counter;
-}
-
-void NVMeInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    uint64_t now = curTick();
-
-    if (tick < now) {
-      SimpleSSD::warn("Tried to schedule %" PRIu64
-                      " < curTick() to event %" PRIu64
-                      ". Set tick as curTick().", tick, eid);
-
-      tick = now;
-    }
-
-    if (iter->second.scheduled()) {
-      SimpleSSD::warn("Event %" PRIu64 " rescheduled from %" PRIu64
-                      " to %" PRIu64,
-                      eid, iter->second.when(), tick);
-
-      reschedule(iter->second, tick);
-    }
-    else {
-      schedule(iter->second, tick);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-void NVMeInterface::descheduleEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    if (iter->second.scheduled()) {
-      deschedule(iter->second);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-bool NVMeInterface::isScheduled(SimpleSSD::Event eid) {
-  bool ret = false;
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    ret = iter->second.scheduled();
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-
-  return ret;
-}
-
-void NVMeInterface::deallocateEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    eventList.erase(iter);
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
 }
 
 NVMeInterface *NVMeInterfaceParams::create() {

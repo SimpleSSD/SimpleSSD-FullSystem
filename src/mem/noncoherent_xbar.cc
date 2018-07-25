@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015, 2018 ARM Limited
+ * Copyright (c) 2011-2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -88,6 +88,8 @@ NoncoherentXBar::NoncoherentXBar(const NoncoherentXBarParams *p)
         respLayers.push_back(new RespLayer(*bp, *this,
                                            csprintf(".respLayer%d", i)));
     }
+
+    clearPortCache();
 }
 
 NoncoherentXBar::~NoncoherentXBar()
@@ -108,8 +110,7 @@ NoncoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
     assert(!pkt->isExpressSnoop());
 
     // determine the destination based on the address
-    AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
-    PortID master_port_id = findPort(addr_range);
+    PortID master_port_id = findPort(pkt->getAddr());
 
     // test if the layer should be considered occupied for the current
     // port
@@ -254,8 +255,7 @@ NoncoherentXBar::recvAtomic(PacketPtr pkt, PortID slave_port_id)
     unsigned int pkt_cmd = pkt->cmdToIndex();
 
     // determine the destination port
-    AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
-    PortID master_port_id = findPort(addr_range);
+    PortID master_port_id = findPort(pkt->getAddr());
 
     // stats updates for the request
     pktCount[slave_port_id][master_port_id]++;
@@ -305,8 +305,7 @@ NoncoherentXBar::recvFunctional(PacketPtr pkt, PortID slave_port_id)
     }
 
     // determine the destination port
-    AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
-    PortID dest_id = findPort(addr_range);
+    PortID dest_id = findPort(pkt->getAddr());
 
     // forward the request to the appropriate destination
     masterPorts[dest_id]->sendFunctional(pkt);

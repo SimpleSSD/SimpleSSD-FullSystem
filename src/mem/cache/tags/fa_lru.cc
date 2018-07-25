@@ -107,19 +107,26 @@ FALRU::regStats()
     cacheTracking.regStats(name());
 }
 
+FALRUBlk *
+FALRU::hashLookup(Addr addr) const
+{
+    tagIterator iter = tagHash.find(addr);
+    if (iter != tagHash.end()) {
+        return (*iter).second;
+    }
+    return nullptr;
+}
+
 void
 FALRU::invalidate(CacheBlk *blk)
 {
     BaseTags::invalidate(blk);
 
-    // Decrease the number of tags in use
-    tagsInUse--;
-
     // Move the block to the tail to make it the next victim
     moveToTail((FALRUBlk*)blk);
 
     // Erase block entry in the hash table
-    tagHash.erase(std::make_pair(blk->tag, blk->isSecure()));
+    tagHash.erase(blk->tag);
 }
 
 CacheBlk*
@@ -135,7 +142,7 @@ FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat,
     CachesMask mask = 0;
     FALRUBlk* blk = static_cast<FALRUBlk*>(findBlock(addr, is_secure));
 
-    if (blk && blk->isValid()) {
+    if (blk != nullptr) {
         // If a cache hit
         lat = accessLatency;
         // Check if the block to be accessed is available. If not,
@@ -162,26 +169,23 @@ FALRU::accessBlock(Addr addr, bool is_secure, Cycles &lat,
     return blk;
 }
 
+
 CacheBlk*
 FALRU::findBlock(Addr addr, bool is_secure) const
 {
-    FALRUBlk* blk = nullptr;
-
     Addr tag = extractTag(addr);
-    auto iter = tagHash.find(std::make_pair(tag, is_secure));
-    if (iter != tagHash.end()) {
-        blk = (*iter).second;
-    }
+    FALRUBlk* blk = hashLookup(tag);
 
     if (blk && blk->isValid()) {
         assert(blk->tag == tag);
         assert(blk->isSecure() == is_secure);
+    } else {
+        blk = nullptr;
     }
-
     return blk;
 }
 
-ReplaceableEntry*
+CacheBlk*
 FALRU::findBlockBySetAndWay(int set, int way) const
 {
     assert(set == 0);
@@ -189,20 +193,13 @@ FALRU::findBlockBySetAndWay(int set, int way) const
 }
 
 CacheBlk*
-FALRU::findVictim(Addr addr, const bool is_secure,
-                  std::vector<CacheBlk*>& evict_blks) const
+FALRU::findVictim(Addr addr)
 {
-    // The victim is always stored on the tail for the FALRU
-    FALRUBlk* victim = tail;
-
-    // There is only one eviction for this replacement
-    evict_blks.push_back(victim);
-
-    return victim;
+    return tail;
 }
 
 void
-FALRU::insertBlock(const PacketPtr pkt, CacheBlk *blk)
+FALRU::insertBlock(PacketPtr pkt, CacheBlk *blk)
 {
     FALRUBlk* falruBlk = static_cast<FALRUBlk*>(blk);
 
@@ -212,14 +209,11 @@ FALRU::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     // Do common block insertion functionality
     BaseTags::insertBlock(pkt, blk);
 
-    // Increment tag counter
-    tagsInUse++;
-
     // New block is the MRU
     moveToHead(falruBlk);
 
     // Insert new block in the hash table
-    tagHash[std::make_pair(blk->tag, blk->isSecure())] = falruBlk;
+    tagHash[falruBlk->tag] = falruBlk;
 }
 
 void
@@ -400,7 +394,7 @@ FALRU::CacheTracking::recordAccess(FALRUBlk *blk)
     }
 
     // Record stats for the actual cache too
-    if (blk && blk->isValid()) {
+    if (blk) {
         hits[numTrackedCaches]++;
     } else {
         misses[numTrackedCaches]++;

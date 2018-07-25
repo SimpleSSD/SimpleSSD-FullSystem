@@ -128,6 +128,7 @@ ExtSlave::recvTimingReq(PacketPtr pkt)
 
     if (simPhase == INIT) {
         link->sendInitData(ev);
+        delete pkt->req;
         delete pkt;
     } else {
         if (pkt->needsResponse()) {
@@ -175,9 +176,7 @@ ExtSlave::handleEvent(Event* ev)
 
         // make Req/Pkt for Snoop/no response needed
         // presently no consideration for masterId, packet type, flags...
-        RequestPtr req = std::make_shared<Request>(
-            event->getAddr(), event->getSize(), 0, 0);
-
+        RequestPtr req = new Request(event->getAddr(), event->getSize(), 0, 0);
         auto pkt = new Packet(req, ::MemCmd::InvalidateReq);
 
         // Clear out bus delay notifications

@@ -68,8 +68,6 @@
 // TrackedCaches class
 //#define FALRU_DEBUG
 
-class ReplaceableEntry;
-
 // A bitmask of the caches we are keeping track of. Currently the
 // lowest bit is the smallest cache we are tracking, as it is
 // specified by the corresponding parameter. The rest of the bits are
@@ -111,19 +109,19 @@ class FALRU : public BaseTags
     FALRUBlk *tail;
 
     /** Hash table type mapping addresses to cache block pointers. */
-    struct PairHash
-    {
-        template <class T1, class T2>
-        std::size_t operator()(const std::pair<T1, T2> &p) const
-        {
-            return std::hash<T1>()(p.first) ^ std::hash<T2>()(p.second);
-        }
-    };
-    typedef std::pair<Addr, bool> TagHashKey;
-    typedef std::unordered_map<TagHashKey, FALRUBlk *, PairHash> TagHash;
+    typedef std::unordered_map<Addr, FALRUBlk *, std::hash<Addr> > hash_t;
+    /** Iterator into the address hash table. */
+    typedef hash_t::const_iterator tagIterator;
 
     /** The address hash table. */
-    TagHash tagHash;
+    hash_t tagHash;
+
+    /**
+     * Find the cache block for the given address.
+     * @param addr The address to find.
+     * @return The cache block of the address, if any.
+     */
+    FALRUBlk * hashLookup(Addr addr) const;
 
     /**
      * Move a cache block to the MRU position.
@@ -188,25 +186,12 @@ class FALRU : public BaseTags
     CacheBlk* findBlock(Addr addr, bool is_secure) const override;
 
     /**
-     * Find a block given set and way.
-     *
-     * @param set The set of the block.
-     * @param way The way of the block.
-     * @return The block.
-     */
-    ReplaceableEntry* findBlockBySetAndWay(int set, int way) const override;
-
-    /**
-     * Find replacement victim based on address. The list of evicted blocks
-     * only contains the victim.
+     * Find replacement victim based on address.
      *
      * @param addr Address to find a victim for.
-     * @param is_secure True if the target memory space is secure.
-     * @param evict_blks Cache blocks to be evicted.
      * @return Cache block to be replaced.
      */
-    CacheBlk* findVictim(Addr addr, const bool is_secure,
-                         std::vector<CacheBlk*>& evict_blks) const override;
+    CacheBlk* findVictim(Addr addr) override;
 
     /**
      * Insert the new block into the cache and update replacement data.
@@ -214,7 +199,15 @@ class FALRU : public BaseTags
      * @param pkt Packet holding the address to update
      * @param blk The block to update.
      */
-    void insertBlock(const PacketPtr pkt, CacheBlk *blk) override;
+    void insertBlock(PacketPtr pkt, CacheBlk *blk) override;
+
+    /**
+     * Find the cache block given set and way
+     * @param set The set of the block.
+     * @param way The way of the block.
+     * @return The cache block.
+     */
+    CacheBlk* findBlockBySetAndWay(int set, int way) const override;
 
     /**
      * Generate the tag from the addres. For fully associative this is just the

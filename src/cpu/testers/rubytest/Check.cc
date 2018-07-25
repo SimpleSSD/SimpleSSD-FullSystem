@@ -107,7 +107,7 @@ Check::initiatePrefetch()
     }
 
     // Prefetches are assumed to be 0 sized
-    RequestPtr req = std::make_shared<Request>(m_address, 0, flags,
+    Request *req = new Request(m_address, 0, flags,
             m_tester_ptr->masterId(), curTick(), m_pc);
     req->setContext(index);
 
@@ -127,6 +127,7 @@ Check::initiatePrefetch()
     } else {
         // If the packet did not issue, must delete
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
 
         DPRINTF(RubyTest,
@@ -145,7 +146,7 @@ Check::initiateFlush()
 
     Request::Flags flags;
 
-    RequestPtr req = std::make_shared<Request>(m_address, CHECK_SIZE, flags,
+    Request *req = new Request(m_address, CHECK_SIZE, flags,
             m_tester_ptr->masterId(), curTick(), m_pc);
 
     Packet::Command cmd;
@@ -178,8 +179,8 @@ Check::initiateAction()
     Addr writeAddr(m_address + m_store_count);
 
     // Stores are assumed to be 1 byte-sized
-    RequestPtr req = std::make_shared<Request>(
-        writeAddr, 1, flags, m_tester_ptr->masterId(), curTick(), m_pc);
+    Request *req = new Request(writeAddr, 1, flags, m_tester_ptr->masterId(),
+                               curTick(), m_pc);
 
     req->setContext(index);
     Packet::Command cmd;
@@ -214,6 +215,7 @@ Check::initiateAction()
         // Note: No need to delete the data, the packet destructor
         // will delete it
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
 
         DPRINTF(RubyTest, "failed to initiate action - sequencer not ready\n");
@@ -242,7 +244,7 @@ Check::initiateCheck()
     }
 
     // Checks are sized depending on the number of bytes written
-    RequestPtr req = std::make_shared<Request>(m_address, CHECK_SIZE, flags,
+    Request *req = new Request(m_address, CHECK_SIZE, flags,
                                m_tester_ptr->masterId(), curTick(), m_pc);
 
     req->setContext(index);
@@ -267,6 +269,7 @@ Check::initiateCheck()
         // Note: No need to delete the data, the packet destructor
         // will delete it
         delete pkt->senderState;
+        delete pkt->req;
         delete pkt;
 
         DPRINTF(RubyTest, "failed to initiate check - cpu port not ready\n");

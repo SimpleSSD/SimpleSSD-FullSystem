@@ -29,6 +29,7 @@
 
 UFSInterface::UFSInterface(const UFSInterfaceParams *p)
     : DmaDevice(p),
+      EventEngine(this),
       pioAddr(p->pio_addr),
       pioSize(0xFFFF),
       pioDelay(p->pio_latency),
@@ -273,83 +274,6 @@ void UFSInterface::updateStats() {
     }
 
     schedule(statUpdateEvent, curTick() + STAT_UPDATE_PERIOD);
-  }
-}
-
-uint64_t UFSInterface::getCurrentTick() {
-  return curTick();
-}
-
-SimpleSSD::Event UFSInterface::allocateEvent(SimpleSSD::EventFunction func) {
-  std::string name("SimpleSSD_Event_");
-
-  name += std::to_string(counter++);
-
-  auto iter = eventList.insert(
-      {counter, EventFunctionWrapper([func]() { func(curTick()); }, name)});
-
-  if (!iter.second) {
-    SimpleSSD::panic("Fail to allocate event");
-  }
-
-  return counter;
-}
-
-void UFSInterface::scheduleEvent(SimpleSSD::Event eid, uint64_t tick) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    if (iter->second.scheduled()) {
-      SimpleSSD::warn("Event %" PRIu64 " rescheduled from %" PRIu64
-                      " to %" PRIu64,
-                      eid, iter->second.when(), tick);
-
-      reschedule(iter->second, tick);
-    }
-    else {
-      schedule(iter->second, tick);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-void UFSInterface::descheduleEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    if (iter->second.scheduled()) {
-      deschedule(iter->second);
-    }
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-}
-
-bool UFSInterface::isScheduled(SimpleSSD::Event eid) {
-  bool ret = false;
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    ret = iter->second.scheduled();
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
-  }
-
-  return ret;
-}
-
-void UFSInterface::deallocateEvent(SimpleSSD::Event eid) {
-  auto iter = eventList.find(eid);
-
-  if (iter != eventList.end()) {
-    eventList.erase(iter);
-  }
-  else {
-    SimpleSSD::panic("Event %" PRIu64 " does not exists", eid);
   }
 }
 
