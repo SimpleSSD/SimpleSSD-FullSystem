@@ -46,9 +46,6 @@ from m5.proxy import *
 from m5.SimObject import SimObject
 from m5.defines import buildEnv
 
-if buildEnv['TARGET_ISA'] == 'x86':
-    from X86LocalApic import X86LocalApic
-
 class BaseXBar(MemObject):
     type = 'BaseXBar'
     abstract = True
@@ -156,9 +153,6 @@ class L2XBar(CoherentXBar):
 # interconnect, tying together the CPU clusters, GPUs, and any I/O
 # coherent masters, and DRAM controllers.
 class SystemXBar(CoherentXBar):
-    type = 'SystemXBar'
-    cxx_header = "mem/coherent_xbar.hh"
-
     # 128-bit crossbar by default
     width = 16
 
@@ -183,9 +177,6 @@ class SystemXBar(CoherentXBar):
     # without caches where the SystemXBar is also the point of
     # unification.
     point_of_unification = True
-
-    if buildEnv['TARGET_ISA'] == 'x86':
-        lapics = VectorParam.X86LocalApic([], "Interrupt Controller")
 
 # In addition to the system interconnect, we typically also have one
 # or more on-chip I/O crossbars. Note that at some point we might want

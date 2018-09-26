@@ -494,6 +494,10 @@ def connectX86ClassicSystem(x86_sys, numCPUs):
 
     x86_sys.membus = MemBus()
 
+    # Message Signaled Interrupt
+    # lapics param will be filled in configs/example/fs.py
+    x86_sys.msi_handler.pio = x86_sys.membus.master
+
     # North Bridge
     x86_sys.iobus = IOXBar()
     x86_sys.bridge = Bridge(delay='50ns')

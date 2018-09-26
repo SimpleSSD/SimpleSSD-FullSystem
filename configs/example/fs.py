@@ -195,17 +195,18 @@ def build_test_system(np, simplessd):
             test_sys.iocache.cpu_side = test_sys.iobus.master
             test_sys.iocache.mem_side = test_sys.membus.slave
 
-            if buildEnv['TARGET_ISA'] == "arm":
+            if buildEnv['TARGET_ISA'] in "arm":
                 if options.machine_type == "VExpress_GEM5_V1":
                     test_sys.iobridge = Bridge(delay='50ns',
                                                ranges=[gicv2m_range])
                     test_sys.iobridge.slave = test_sys.iobus.master
                     test_sys.iobridge.master = test_sys.membus.slave
+
         elif not options.external_memory_system:
             mem_ranges = list(test_sys.mem_ranges)  # Copy list not reference
 
             # Bypass MSI/MSI-X
-            if buildEnv['TARGET_ISA'] == "arm":
+            if buildEnv['TARGET_ISA'] in "arm":
                 if options.machine_type == "VExpress_GEM5_V1":
                     mem_ranges.append(gicv2m_range)
 
@@ -251,13 +252,13 @@ def build_test_system(np, simplessd):
 
         MemConfig.config_mem(options, test_sys)
 
-        if buildEnv['TARGET_ISA'] == "x86":
+        if buildEnv['TARGET_ISA'] in "x86":
             lapics = []
 
             for i in xrange(np):
                 lapics.append(test_sys.cpu[i].interrupts[0])
 
-            test_sys.membus.lapics = lapics
+            test_sys.msi_handler.lapics = lapics
 
     return test_sys
 

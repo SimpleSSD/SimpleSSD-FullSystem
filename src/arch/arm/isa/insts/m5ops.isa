@@ -580,7 +580,7 @@ let {{
     exec_output += PredOpExecute.subst(m5workendIop)
 
     m5tickCode64 = '''
-                    PseudoInst::getTick(
+                    X0 = PseudoInst::getTick(
                       xc->tcBase(),
                       X0
                     );'''

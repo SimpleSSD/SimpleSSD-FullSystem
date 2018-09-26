@@ -41,6 +41,7 @@ from SMBios import X86SMBiosSMBiosTable
 from IntelMP import X86IntelMPFloatingPointer, X86IntelMPConfigTable
 from ACPI import X86ACPIRSDP
 from System import System
+from X86MSIHandler import X86MSIHandler
 
 class X86System(System):
     type = 'X86System'
@@ -56,6 +57,9 @@ class X86System(System):
     acpi_description_table_pointer = Param.X86ACPIRSDP(
             X86ACPIRSDP(), 'ACPI root description pointer structure')
     load_addr_mask = 0xffffffffffffffff
+
+# SimpleSSD
+    msi_handler = X86MSIHandler()
 
 class LinuxX86System(X86System):
     type = 'LinuxX86System'

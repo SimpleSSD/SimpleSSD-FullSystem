@@ -79,6 +79,11 @@ if env['TARGET_ISA'] == 'x86':
     SimObject('X86System.py')
     SimObject('X86TLB.py')
 
+# SimpleSSD
+    Source('msi_handler.cc')
+    SimObject('X86MSIHandler.py')
+    DebugFlag('MSI', "X86 MSI Handler debugging")
+
     DebugFlag('Faults', "Trace all faults/exceptions/traps")
     DebugFlag('LocalApic', "Local APIC debugging")
     DebugFlag('PageTableWalker', \

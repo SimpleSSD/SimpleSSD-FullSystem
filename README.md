@@ -29,3 +29,6 @@ See LICENSE_GPLv3 for more details about the license.
  - src/dev/storage/UFS.py
  - src/dev/storage/ufs_interface.cc
  - src/dev/storage/ufs_interface.hh
+ - src/arch/x86/X86MSIHandler.py
+ - src/arch/x86/msi_handler.cc
+ - src/arch/x86/msi_handler.hh

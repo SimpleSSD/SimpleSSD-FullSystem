@@ -959,6 +959,11 @@ if ret > 0:
 main.Append(LINKFLAGS=['-L' + workdir])
 main.Append(LIBS=['simplessd', 'mcpat'])
 
+# Remove previous binaries to force scons to link newly built library
+for t in BUILD_TARGETS:
+    if os.path.isfile(t):
+        os.unlink(t)
+
 ######################################################################
 #
 # Finish the configuration
