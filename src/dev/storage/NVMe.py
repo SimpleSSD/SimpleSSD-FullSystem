@@ -101,6 +101,14 @@ class NVMeInterface(PciDevice):
     BAR4Size = '8192B'  # 8KB for MSI-X 512 vectors
     BAR5Size = '4096B'  # 4KB (64B) for MSI-X 512 vectors
 
-class OCSSDInterface(NVMeInterface):
+class OCSSDInterface12(NVMeInterface):
+    # See Linux Kernel (drivers/nvme/host/pci.c::nvme_id_table) for more details
     VendorID = 0x1D1D
     DeviceID = 0x1F1F
+
+    # We will use subsystem vendor ID for detecting OCSSD spec version
+    SubsystemVendorID = 0x0102
+
+class OCSSDInterface20(OCSSDInterface12):
+    # We will use subsystem vendor ID for detecting OCSSD spec version
+    SubsystemVendorID = 0x0200

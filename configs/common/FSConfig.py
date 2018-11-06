@@ -293,8 +293,11 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
         pci_devices.append(self.pci_nvme)
     elif simplessd['interface'] == 'ufs':
         self.realview.ufs.SSDConfig = simplessd['config']
-    elif simplessd['interface'] == 'ocssd':
-        self.pci_nvme = OCSSDInterface(SSDConfig=simplessd['config'])
+    elif simplessd['interface'] == 'ocssd' or simplessd['interface'] == 'ocssd1':
+        self.pci_nvme = OCSSDInterface12(SSDConfig=simplessd['config'])
+        pci_devices.append(self.pci_nvme)
+    elif simplessd['interface'] == 'ocssd2':
+        self.pci_nvme = OCSSDInterface20(SSDConfig=simplessd['config'])
         pci_devices.append(self.pci_nvme)
     elif simplessd['interface'] == 'sata':
         self.pci_sata = SATAInterface(SSDConfig=simplessd['config'])
