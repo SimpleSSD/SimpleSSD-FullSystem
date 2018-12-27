@@ -391,6 +391,8 @@ void NVMeInterface::dmaRead(uint64_t addr, uint64_t size, uint8_t *buffer,
   if (size == 0) {
     SimpleSSD::warn("nvme_interface: zero-size DMA read request. Ignore.");
 
+    func(curTick(), context);
+
     return;
   }
 
@@ -448,6 +450,8 @@ void NVMeInterface::dmaWrite(uint64_t addr, uint64_t size, uint8_t *buffer,
                              SimpleSSD::DMAFunction &func, void *context) {
   if (size == 0) {
     SimpleSSD::warn("nvme_interface: zero-size DMA write request. Ignore.");
+
+    func(curTick(), context);
 
     return;
   }
