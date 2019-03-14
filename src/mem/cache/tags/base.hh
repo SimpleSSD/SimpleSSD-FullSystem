@@ -57,12 +57,14 @@
 #include "base/logging.hh"
 #include "base/statistics.hh"
 #include "base/types.hh"
-#include "mem/cache/blk.hh"
+#include "mem/cache/cache_blk.hh"
 #include "mem/packet.hh"
 #include "params/BaseTags.hh"
 #include "sim/clocked_object.hh"
 
-class BaseCache;
+class System;
+class IndexingPolicy;
+class ReplaceableEntry;
 
 /**
  * A common base class of Cache tagstore objects.
@@ -78,14 +80,12 @@ class BaseTags : public ClockedObject
     const unsigned size;
     /** The tag lookup latency of the cache. */
     const Cycles lookupLatency;
-    /**
-     * The total access latency of the cache. This latency
-     * is different depending on the cache access mode
-     * (parallel or sequential)
-     */
-    const Cycles accessLatency;
-    /** Pointer to the parent cache. */
-    BaseCache *cache;
+
+    /** System we are currently operating in. */
+    System *system;
+
+    /** Indexing policy */
+    BaseIndexingPolicy *indexingPolicy;
 
     /**
      * The number of tags that need to be touched to meet the warmup
@@ -164,10 +164,11 @@ class BaseTags : public ClockedObject
     virtual ~BaseTags() {}
 
     /**
-     * Set the parent cache back pointer.
-     * @param _cache Pointer to parent cache.
+     * Initialize blocks. Must be overriden by every subclass that uses
+     * a block type different from its parent's, as the current Python
+     * code generation does not allow templates.
      */
-    void setCache(BaseCache *_cache);
+    virtual void tagsInit() = 0;
 
     /**
      * Register local statistics.
@@ -191,9 +192,22 @@ class BaseTags : public ClockedObject
     std::string print();
 
     /**
-     * Find a block using the memory address
+     * Finds the block in the cache without touching it.
+     *
+     * @param addr The address to look for.
+     * @param is_secure True if the target memory space is secure.
+     * @return Pointer to the cache block.
      */
-    virtual CacheBlk * findBlock(Addr addr, bool is_secure) const = 0;
+    virtual CacheBlk *findBlock(Addr addr, bool is_secure) const;
+
+    /**
+     * Find a block given set and way.
+     *
+     * @param set The set of the block.
+     * @param way The way of the block.
+     * @return The block.
+     */
+    virtual ReplaceableEntry* findBlockBySetAndWay(int set, int way) const;
 
     /**
      * Align an address to the block size.
@@ -214,14 +228,6 @@ class BaseTags : public ClockedObject
     {
         return (addr & blkMask);
     }
-
-    /**
-     * Find the cache block given set and way
-     * @param set The set of the block.
-     * @param way The way of the block.
-     * @return The cache block.
-     */
-    virtual CacheBlk *findBlockBySetAndWay(int set, int way) const = 0;
 
     /**
      * Limit the allocation for the cache ways.
@@ -252,7 +258,6 @@ class BaseTags : public ClockedObject
         assert(blk);
         assert(blk->isValid());
 
-        tagsInUse--;
         occupancies[blk->srcMasterId]--;
         totalRefs += blk->refCount;
         sampledRefs++;
@@ -261,16 +266,42 @@ class BaseTags : public ClockedObject
     }
 
     /**
-     * Find replacement victim based on address.
+     * Find replacement victim based on address. If the address requires
+     * blocks to be evicted, their locations are listed for eviction. If a
+     * conventional cache is being used, the list only contains the victim.
+     * However, if using sector or compressed caches, the victim is one of
+     * the blocks to be evicted, but its location is the only one that will
+     * be assigned to the newly allocated block associated to this address.
+     * @sa insertBlock
      *
      * @param addr Address to find a victim for.
+     * @param is_secure True if the target memory space is secure.
+     * @param evict_blks Cache blocks to be evicted.
      * @return Cache block to be replaced.
      */
-    virtual CacheBlk* findVictim(Addr addr) = 0;
+    virtual CacheBlk* findVictim(Addr addr, const bool is_secure,
+                                 std::vector<CacheBlk*>& evict_blks) const = 0;
 
+    /**
+     * Access block and update replacement data. May not succeed, in which case
+     * nullptr is returned. This has all the implications of a cache access and
+     * should only be used as such. Returns the tag lookup latency as a side
+     * effect.
+     *
+     * @param addr The address to find.
+     * @param is_secure True if the target memory space is secure.
+     * @param lat The latency of the tag lookup.
+     * @return Pointer to the cache block if found.
+     */
     virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) = 0;
 
-    virtual Addr extractTag(Addr addr) const = 0;
+    /**
+     * Generate the tag from the given address.
+     *
+     * @param addr The address to get the tag from.
+     * @return The tag of the address.
+     */
+    virtual Addr extractTag(const Addr addr) const;
 
     /**
      * Insert the new block into the cache and update stats.
@@ -278,7 +309,7 @@ class BaseTags : public ClockedObject
      * @param pkt Packet holding the address to update
      * @param blk The block to update.
      */
-    virtual void insertBlock(PacketPtr pkt, CacheBlk *blk);
+    virtual void insertBlock(const PacketPtr pkt, CacheBlk *blk);
 
     /**
      * Regenerate the block address.

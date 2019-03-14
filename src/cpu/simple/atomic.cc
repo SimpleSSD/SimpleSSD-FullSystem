@@ -1,6 +1,6 @@
 /*
  * Copyright 2014 Google, Inc.
- * Copyright (c) 2012-2013,2015,2017 ARM Limited
+ * Copyright (c) 2012-2013,2015,2017-2018 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -69,9 +69,10 @@ AtomicSimpleCPU::init()
     BaseSimpleCPU::init();
 
     int cid = threadContexts[0]->contextId();
-    ifetch_req.setContext(cid);
-    data_read_req.setContext(cid);
-    data_write_req.setContext(cid);
+    ifetch_req->setContext(cid);
+    data_read_req->setContext(cid);
+    data_write_req->setContext(cid);
+    data_amo_req->setContext(cid);
 }
 
 AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
@@ -83,10 +84,14 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
       simulate_inst_stalls(p->simulate_inst_stalls),
       icachePort(name() + ".icache_port", this),
       dcachePort(name() + ".dcache_port", this),
-      fastmem(p->fastmem), dcache_access(false), dcache_latency(0),
+      dcache_access(false), dcache_latency(0),
       ppCommit(nullptr)
 {
     _status = Idle;
+    ifetch_req = std::make_shared<Request>();
+    data_read_req = std::make_shared<Request>();
+    data_write_req = std::make_shared<Request>();
+    data_amo_req = std::make_shared<Request>();
 }
 
 
@@ -268,6 +273,11 @@ AtomicSimpleCPU::suspendContext(ThreadID thread_num)
     BaseCPU::suspendContext(thread_num);
 }
 
+Tick
+AtomicSimpleCPU::sendPacket(MasterPort &port, const PacketPtr &pkt)
+{
+    return port.sendAtomic(pkt);
+}
 
 Tick
 AtomicSimpleCPU::AtomicCPUDPort::recvAtomicSnoop(PacketPtr pkt)
@@ -331,7 +341,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
     SimpleThread* thread = t_info.thread;
 
     // use the CPU's statically allocated read request and packet objects
-    Request *req = &data_read_req;
+    const RequestPtr &req = data_read_req;
 
     if (traceData)
         traceData->setMem(addr, size, flags);
@@ -361,13 +371,10 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
             Packet pkt(req, Packet::makeReadCmd(req));
             pkt.dataStatic(data);
 
-            if (req->isMmappedIpr())
+            if (req->isMmappedIpr()) {
                 dcache_latency += TheISA::handleIprRead(thread->getTC(), &pkt);
-            else {
-                if (fastmem && system->isMemAddr(pkt.getAddr()))
-                    system->getPhysMem().access(&pkt);
-                else
-                    dcache_latency += dcachePort.sendAtomic(&pkt);
+            } else {
+                dcache_latency += sendPacket(dcachePort, &pkt);
             }
             dcache_access = true;
 
@@ -412,14 +419,6 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
 }
 
 Fault
-AtomicSimpleCPU::initiateMemRead(Addr addr, unsigned size,
-                                 Request::Flags flags)
-{
-    panic("initiateMemRead() is for timing accesses, and should "
-          "never be called on AtomicSimpleCPU.\n");
-}
-
-Fault
 AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                           Request::Flags flags, uint64_t *res)
 {
@@ -435,7 +434,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     }
 
     // use the CPU's statically allocated write request and packet objects
-    Request *req = &data_write_req;
+    const RequestPtr &req = data_write_req;
 
     if (traceData)
         traceData->setMem(addr, size, flags);
@@ -480,10 +479,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                     dcache_latency +=
                         TheISA::handleIprWrite(thread->getTC(), &pkt);
                 } else {
-                    if (fastmem && system->isMemAddr(pkt.getAddr()))
-                        system->getPhysMem().access(&pkt);
-                    else
-                        dcache_latency += dcachePort.sendAtomic(&pkt);
+                    dcache_latency += sendPacket(dcachePort, &pkt);
 
                     // Notify other threads on this CPU of write
                     threadSnoop(&pkt, curThread);
@@ -532,6 +528,70 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     }
 }
 
+Fault
+AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
+                        Request::Flags flags, AtomicOpFunctor *amo_op)
+{
+    SimpleExecContext& t_info = *threadInfo[curThread];
+    SimpleThread* thread = t_info.thread;
+
+    // use the CPU's statically allocated amo request and packet objects
+    const RequestPtr &req = data_amo_req;
+
+    if (traceData)
+        traceData->setMem(addr, size, flags);
+
+    //The address of the second part of this access if it needs to be split
+    //across a cache line boundary.
+    Addr secondAddr = roundDown(addr + size - 1, cacheLineSize());
+
+    // AMO requests that access across a cache line boundary are not
+    // allowed since the cache does not guarantee AMO ops to be executed
+    // atomically in two cache lines
+    // For ISAs such as x86 that requires AMO operations to work on
+    // accesses that cross cache-line boundaries, the cache needs to be
+    // modified to support locking both cache lines to guarantee the
+    // atomicity.
+    if (secondAddr > addr) {
+        panic("AMO request should not access across a cache line boundary\n");
+    }
+
+    dcache_latency = 0;
+
+    req->taskId(taskId());
+    req->setVirt(0, addr, size, flags, dataMasterId(),
+                 thread->pcState().instAddr(), amo_op);
+
+    // translate to physical address
+    Fault fault = thread->dtb->translateAtomic(req, thread->getTC(),
+                                                      BaseTLB::Write);
+
+    // Now do the access.
+    if (fault == NoFault && !req->getFlags().isSet(Request::NO_ACCESS)) {
+        // We treat AMO accesses as Write accesses with SwapReq command
+        // data will hold the return data of the AMO access
+        Packet pkt(req, Packet::makeWriteCmd(req));
+        pkt.dataStatic(data);
+
+        if (req->isMmappedIpr())
+            dcache_latency += TheISA::handleIprRead(thread->getTC(), &pkt);
+        else {
+            dcache_latency += sendPacket(dcachePort, &pkt);
+        }
+
+        dcache_access = true;
+
+        assert(!pkt.isError());
+        assert(!req->isLLSC());
+    }
+
+    if (fault != NoFault && req->isPrefetch()) {
+        return NoFault;
+    }
+
+    //If there's a fault and we're not doing prefetch, return it
+    return fault;
+}
 
 void
 AtomicSimpleCPU::tick()
@@ -545,9 +605,10 @@ AtomicSimpleCPU::tick()
     if (numThreads > 1) {
         ContextID cid = threadContexts[curThread]->contextId();
 
-        ifetch_req.setContext(cid);
-        data_read_req.setContext(cid);
-        data_write_req.setContext(cid);
+        ifetch_req->setContext(cid);
+        data_read_req->setContext(cid);
+        data_write_req->setContext(cid);
+        data_amo_req->setContext(cid);
     }
 
     SimpleExecContext& t_info = *threadInfo[curThread];
@@ -577,9 +638,9 @@ AtomicSimpleCPU::tick()
         bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
                            !curMacroStaticInst;
         if (needToFetch) {
-            ifetch_req.taskId(taskId());
-            setupFetchRequest(&ifetch_req);
-            fault = thread->itb->translateAtomic(&ifetch_req, thread->getTC(),
+            ifetch_req->taskId(taskId());
+            setupFetchRequest(ifetch_req);
+            fault = thread->itb->translateAtomic(ifetch_req, thread->getTC(),
                                                  BaseTLB::Execute);
         }
 
@@ -597,13 +658,10 @@ AtomicSimpleCPU::tick()
                 //if (decoder.needMoreBytes())
                 //{
                     icache_access = true;
-                    Packet ifetch_pkt = Packet(&ifetch_req, MemCmd::ReadReq);
+                    Packet ifetch_pkt = Packet(ifetch_req, MemCmd::ReadReq);
                     ifetch_pkt.dataStatic(&inst);
 
-                    if (fastmem && system->isMemAddr(ifetch_pkt.getAddr()))
-                        system->getPhysMem().access(&ifetch_pkt);
-                    else
-                        icache_latency = icachePort.sendAtomic(&ifetch_pkt);
+                    icache_latency = sendPacket(icachePort, &ifetch_pkt);
 
                     assert(!ifetch_pkt.isError());
 

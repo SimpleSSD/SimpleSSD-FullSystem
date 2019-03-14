@@ -211,7 +211,7 @@
                         warn("M5 reserved opcode 1 ignored.\n");
                     }}, IsNonSpeculative);
                     0x56: m5tick({{
-                        PseudoInst::getTick(xc->tcBase(), Rdi);
+                        Rax = PseudoInst::getTick(xc->tcBase(), Rdi);
                     }}, IsNonSpeculative);
                     0x57: m5print({{
                         PseudoInst::print(xc->tcBase(), Rdi, Rsi);

@@ -239,11 +239,11 @@ PowerProcess::argsInit(int intSize, int pageSize)
 
     //Fix up the aux vectors which point to other data
     for (int i = auxv.size() - 1; i >= 0; i--) {
-        if (auxv[i].a_type == M5_AT_PLATFORM) {
-            auxv[i].a_val = platform_base;
+        if (auxv[i].getHostAuxType() == M5_AT_PLATFORM) {
+            auxv[i].setAuxVal(platform_base);
             initVirtMem.writeString(platform_base, platform.c_str());
-        } else if (auxv[i].a_type == M5_AT_EXECFN) {
-            auxv[i].a_val = aux_data_base;
+        } else if (auxv[i].getHostAuxType() == M5_AT_EXECFN) {
+            auxv[i].setAuxVal(aux_data_base);
             initVirtMem.writeString(aux_data_base, filename.c_str());
         }
     }
@@ -252,9 +252,9 @@ PowerProcess::argsInit(int intSize, int pageSize)
     for (int x = 0; x < auxv.size(); x++)
     {
         initVirtMem.writeBlob(auxv_array_base + x * 2 * intSize,
-                (uint8_t*)&(auxv[x].a_type), intSize);
+                (uint8_t*)&(auxv[x].getAuxType()), intSize);
         initVirtMem.writeBlob(auxv_array_base + (x * 2 + 1) * intSize,
-                (uint8_t*)&(auxv[x].a_val), intSize);
+                (uint8_t*)&(auxv[x].getAuxVal()), intSize);
     }
     //Write out the terminating zeroed auxilliary vector
     const uint64_t zero = 0;
@@ -277,7 +277,7 @@ PowerProcess::argsInit(int intSize, int pageSize)
     memState->setStackMin(roundDown(stack_min, pageSize));
 }
 
-PowerISA::IntReg
+RegVal
 PowerProcess::getSyscallArg(ThreadContext *tc, int &i)
 {
     assert(i < 5);
@@ -285,7 +285,7 @@ PowerProcess::getSyscallArg(ThreadContext *tc, int &i)
 }
 
 void
-PowerProcess::setSyscallArg(ThreadContext *tc, int i, PowerISA::IntReg val)
+PowerProcess::setSyscallArg(ThreadContext *tc, int i, RegVal val)
 {
     assert(i < 5);
     tc->setIntReg(ArgumentReg0 + i, val);

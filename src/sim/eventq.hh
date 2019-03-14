@@ -161,6 +161,9 @@ class EventBase
     /// (such as writebacks).
     static const Priority CPU_Tick_Pri =                50;
 
+    /// If we want to exit a thread in a CPU, it comes after CPU_Tick_Pri
+    static const Priority CPU_Exit_Pri =                64;
+
     /// Statistics events (dump, reset, etc.) come after
     /// everything else, but before exit.
     static const Priority Stat_Event_Pri =              90;
@@ -711,7 +714,11 @@ class EventQueue
      */
     void checkpointReschedule(Event *event);
 
-    virtual ~EventQueue() { }
+    virtual ~EventQueue()
+    {
+        while (!empty())
+            deschedule(getHead());
+    }
 };
 
 void dumpMainQueue();

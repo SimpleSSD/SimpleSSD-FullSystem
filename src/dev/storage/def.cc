@@ -19,6 +19,10 @@
 
 #include "dev/storage/def.hh"
 
+#undef panic
+#undef warn
+#undef info
+
 #include "dev/storage/simplessd/util/simplessd.hh"
 
 void ExitCallback::autoDestruct() { delete this; }

@@ -48,6 +48,7 @@
 #include "base/loader/object_file.hh"
 #include "base/loader/symtab.hh"
 #include "cpu/thread_context.hh"
+#include "dev/arm/gic_v3.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/physical.hh"
 #include "sim/full_system.hh"
@@ -61,11 +62,13 @@ ArmSystem::ArmSystem(Params *p)
       _haveSecurity(p->have_security),
       _haveLPAE(p->have_lpae),
       _haveVirtualization(p->have_virtualization),
+      _haveCrypto(p->have_crypto),
       _genericTimer(nullptr),
+      _gic(nullptr),
+      _resetAddr(p->auto_reset_addr ?
+                 (kernelEntry & loadAddrMask) + loadAddrOffset :
+                 p->reset_addr),
       _highestELIs64(p->highest_el_is_64),
-      _resetAddr64(p->auto_reset_addr_64 ?
-                   (kernelEntry & loadAddrMask) + loadAddrOffset :
-                   p->reset_addr_64),
       _physAddrRange64(p->phys_addr_range_64),
       _haveLargeAsid64(p->have_large_asid_64),
       _m5opRange(p->m5ops_base ?
@@ -103,6 +106,12 @@ ArmSystem::ArmSystem(Params *p)
 
     if (bootldr) {
         bootldr->loadGlobalSymbols(debugSymbolTable);
+
+        warn_if(bootldr->entryPoint() != _resetAddr,
+                "Bootloader entry point %#x overriding reset address %#x",
+                bootldr->entryPoint(), _resetAddr);
+        const_cast<Addr&>(_resetAddr) = bootldr->entryPoint();
+
         if ((bootldr->getArch() == ObjectFile::Arm64) && !_highestELIs64) {
             warn("Highest ARM exception-level set to AArch32 but bootloader "
                   "is for AArch64. Assuming you wanted these to match.\n");
@@ -129,39 +138,27 @@ ArmSystem::initState()
     const Params* p = params();
 
     if (bootldr) {
+        bool isGICv3System = dynamic_cast<Gicv3 *>(getGIC()) != nullptr;
         bootldr->loadSections(physProxy);
-
-        uint8_t jump_to_bl_32[] =
-        {
-            0x07, 0xf0, 0xa0, 0xe1  // branch to r7 in aarch32
-        };
-
-        uint8_t jump_to_bl_64[] =
-        {
-            0xe0, 0x00, 0x1f, 0xd6  // instruction "br x7" in aarch64
-        };
-
-        // write the jump to branch table into address 0
-        if (!_highestELIs64)
-            physProxy.writeBlob(0x0, jump_to_bl_32, sizeof(jump_to_bl_32));
-        else
-            physProxy.writeBlob(0x0, jump_to_bl_64, sizeof(jump_to_bl_64));
 
         inform("Using bootloader at address %#x\n", bootldr->entryPoint());
 
         // Put the address of the boot loader into r7 so we know
         // where to branch to after the reset fault
         // All other values needed by the boot loader to know what to do
-        if (!p->gic_cpu_addr || !p->flags_addr)
-            fatal("gic_cpu_addr && flags_addr must be set with bootloader\n");
+        if (!p->flags_addr)
+           fatal("flags_addr must be set with bootloader\n");
+
+        if (!p->gic_cpu_addr && !isGICv3System)
+            fatal("gic_cpu_addr must be set with bootloader\n");
 
         for (int i = 0; i < threadContexts.size(); i++) {
             if (!_highestELIs64)
                 threadContexts[i]->setIntReg(3, (kernelEntry & loadAddrMask) +
                         loadAddrOffset);
-            threadContexts[i]->setIntReg(4, params()->gic_cpu_addr);
+            if (!isGICv3System)
+                threadContexts[i]->setIntReg(4, params()->gic_cpu_addr);
             threadContexts[i]->setIntReg(5, params()->flags_addr);
-            threadContexts[i]->setIntReg(7, bootldr->entryPoint());
         }
         inform("Using kernel entry physical address at %#x\n",
                (kernelEntry & loadAddrMask) + loadAddrOffset);
@@ -247,9 +244,9 @@ ArmSystem::haveEL(ThreadContext *tc, ExceptionLevel el)
 }
 
 Addr
-ArmSystem::resetAddr64(ThreadContext *tc)
+ArmSystem::resetAddr(ThreadContext *tc)
 {
-    return getArmSystem(tc)->resetAddr64();
+    return getArmSystem(tc)->resetAddr();
 }
 
 uint8_t

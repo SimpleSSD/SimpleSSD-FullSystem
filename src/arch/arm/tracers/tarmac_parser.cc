@@ -415,6 +415,7 @@ TarmacParserRecord::MiscRegMap TarmacParserRecord::miscRegMap = {
     { "id_aa64isar1_el1", MISCREG_ID_AA64ISAR1_EL1 },
     { "id_aa64mmfr0_el1", MISCREG_ID_AA64MMFR0_EL1 },
     { "id_aa64mmfr1_el1", MISCREG_ID_AA64MMFR1_EL1 },
+    { "id_aa64mmfr2_el1", MISCREG_ID_AA64MMFR2_EL1 },
     { "ccsidr_el1", MISCREG_CCSIDR_EL1 },
     { "clidr_el1", MISCREG_CLIDR_EL1 },
     { "aidr_el1", MISCREG_AIDR_EL1 },
@@ -646,35 +647,35 @@ TarmacParserRecord::TarmacParserRecordEvent::process()
             break;
           case REG_S:
             if (instRecord.isetstate == ISET_A64)
-                value_lo = thread->readFloatRegBits(it->index * 4);
+                value_lo = thread->readFloatReg(it->index * 4);
             else
-                value_lo = thread->readFloatRegBits(it->index);
+                value_lo = thread->readFloatReg(it->index);
             break;
           case REG_D:
             if (instRecord.isetstate == ISET_A64)
-                value_lo = thread->readFloatRegBits(it->index * 4) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 4 + 1) <<
+                value_lo = thread->readFloatReg(it->index * 4) |
+                    (uint64_t) thread->readFloatReg(it->index * 4 + 1) <<
                     32;
             else
-                value_lo = thread->readFloatRegBits(it->index * 2) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 2 + 1) <<
+                value_lo = thread->readFloatReg(it->index * 2) |
+                    (uint64_t) thread->readFloatReg(it->index * 2 + 1) <<
                     32;
             break;
           case REG_Q:
             check_value_hi = true;
             if (instRecord.isetstate == ISET_A64) {
-                value_lo = thread->readFloatRegBits(it->index * 4) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 4 + 1) <<
+                value_lo = thread->readFloatReg(it->index * 4) |
+                    (uint64_t) thread->readFloatReg(it->index * 4 + 1) <<
                     32;
-                value_hi = thread->readFloatRegBits(it->index * 4 + 2) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 4 + 3) <<
+                value_hi = thread->readFloatReg(it->index * 4 + 2) |
+                    (uint64_t) thread->readFloatReg(it->index * 4 + 3) <<
                     32;
             } else {
-                value_lo = thread->readFloatRegBits(it->index * 2) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 2 + 1) <<
+                value_lo = thread->readFloatReg(it->index * 2) |
+                    (uint64_t) thread->readFloatReg(it->index * 2 + 1) <<
                     32;
-                value_hi = thread->readFloatRegBits(it->index * 2 + 2) |
-                    (uint64_t) thread->readFloatRegBits(it->index * 2 + 3) <<
+                value_hi = thread->readFloatReg(it->index * 2 + 2) |
+                    (uint64_t) thread->readFloatReg(it->index * 2 + 3) <<
                     32;
             }
             break;
@@ -764,6 +765,7 @@ TarmacParserRecord::TarmacParserRecord(Tick _when, ThreadContext *_thread,
       parsingStarted(false), mismatch(false),
       mismatchOnPcOrOpcode(false), parent(_parent)
 {
+    memReq = std::make_shared<Request>();
 }
 
 void
@@ -1048,7 +1050,7 @@ bool
 TarmacParserRecord::readMemNoEffect(Addr addr, uint8_t *data, unsigned size,
                                     unsigned flags)
 {
-    Request* req = &memReq;
+    const RequestPtr &req = memReq;
     TheISA::TLB* dtb = static_cast<TLB*>(thread->getDTBPtr());
 
     req->setVirt(0, addr, size, flags, thread->pcState().instAddr(),

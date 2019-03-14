@@ -54,8 +54,8 @@ brief_copyright=\
     "gem5 is copyrighted software; use the --copyright option for details."
 
 def parse_options():
-    import config
-    from options import OptionParser
+    from . import config
+    from .options import OptionParser
 
     options = OptionParser(usage=usage, version=version,
                            description=brief_copyright)
@@ -148,7 +148,7 @@ def parse_options():
     options_file = config.get('options.py')
     if options_file:
         scope = { 'options' : options }
-        execfile(options_file, scope)
+        exec(compile(open(options_file).read(), options_file, 'exec'), scope)
 
     arguments = options.parse_args()
     return options,arguments
@@ -191,33 +191,36 @@ def interact(scope):
         # isn't available.
         code.InteractiveConsole(scope).interact(banner)
 
+
+def _check_tracing():
+    import defines
+
+    if defines.TRACING_ON:
+        return
+
+    fatal("Tracing is not enabled.  Compile with TRACING_ON")
+
 def main(*args):
     import m5
 
-    import core
-    import debug
-    import defines
-    import event
-    import info
-    import stats
-    import trace
+    from . import core
+    from . import debug
+    from . import defines
+    from . import event
+    from . import info
+    from . import stats
+    from . import trace
 
-    from util import inform, fatal, panic, isInteractive
+    from .util import inform, fatal, panic, isInteractive
 
     if len(args) == 0:
         options, arguments = parse_options()
     elif len(args) == 2:
         options, arguments = args
     else:
-        raise TypeError, "main() takes 0 or 2 arguments (%d given)" % len(args)
+        raise TypeError("main() takes 0 or 2 arguments (%d given)" % len(args))
 
     m5.options = options
-
-    def check_tracing():
-        if defines.TRACING_ON:
-            return
-
-        fatal("Tracing is not enabled.  Compile with TRACING_ON")
 
     # Set the main event queue for the main thread.
     event.mainq = event.getEventQueue(0)
@@ -258,7 +261,7 @@ def main(*args):
         print()
         print('compiled %s' % defines.compileDate)
         print('build options:')
-        keys = defines.buildEnv.keys()
+        keys = list(defines.buildEnv.keys())
         keys.sort()
         for key in keys:
             val = defines.buildEnv[key]
@@ -279,19 +282,19 @@ def main(*args):
 
     if options.debug_help:
         done = True
-        check_tracing()
+        _check_tracing()
         debug.help()
 
     if options.list_sim_objects:
-        import SimObject
+        from . import SimObject
         done = True
         print("SimObjects:")
-        objects = SimObject.allClasses.keys()
+        objects = list(SimObject.allClasses.keys())
         objects.sort()
         for name in objects:
             obj = SimObject.allClasses[name]
             print("    %s" % obj)
-            params = obj._params.keys()
+            params = list(obj._params.keys())
             params.sort()
             for pname in params:
                 param = obj._params[pname]
@@ -366,7 +369,7 @@ def main(*args):
         debug.schedBreak(int(when))
 
     if options.debug_flags:
-        check_tracing()
+        _check_tracing()
 
         on_flags = []
         off_flags = []
@@ -386,28 +389,28 @@ def main(*args):
                 debug.flags[flag].enable()
 
     if options.debug_start:
-        check_tracing()
+        _check_tracing()
         e = event.create(trace.enable, event.Event.Debug_Enable_Pri)
         event.mainq.schedule(e, options.debug_start)
     else:
         trace.enable()
 
     if options.debug_end:
-        check_tracing()
+        _check_tracing()
         e = event.create(trace.disable, event.Event.Debug_Enable_Pri)
         event.mainq.schedule(e, options.debug_end)
 
     trace.output(options.debug_file)
 
     for ignore in options.debug_ignore:
-        check_tracing()
+        _check_tracing()
         trace.ignore(ignore)
 
     sys.argv = arguments
     sys.path = [ os.path.dirname(sys.argv[0]) ] + sys.path
 
     filename = sys.argv[0]
-    filedata = file(filename, 'r').read()
+    filedata = open(filename, 'r').read()
     filecode = compile(filedata, filename, 'exec')
     scope = { '__file__' : filename,
               '__name__' : '__m5_main__' }
@@ -432,7 +435,7 @@ def main(*args):
                 t = t.tb_next
                 pdb.interaction(t.tb_frame,t)
     else:
-        exec filecode in scope
+        exec(filecode, scope)
 
     # once the script is done
     if options.interactive:

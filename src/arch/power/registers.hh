@@ -31,9 +31,11 @@
 #ifndef __ARCH_POWER_REGISTERS_HH__
 #define __ARCH_POWER_REGISTERS_HH__
 
+#include "arch/generic/vec_pred_reg.hh"
 #include "arch/generic/vec_reg.hh"
 #include "arch/power/generated/max_inst_regs.hh"
 #include "arch/power/miscregs.hh"
+#include "base/types.hh"
 
 namespace PowerISA {
 
@@ -44,24 +46,20 @@ using PowerISAInst::MaxInstDestRegs;
 // be detected by it. Manually add it here.
 const int MaxMiscDestRegs = PowerISAInst::MaxMiscDestRegs + 1;
 
-typedef uint64_t IntReg;
+// Not applicable to Power
+using VecElem = ::DummyVecElem;
+using VecReg = ::DummyVecReg;
+using ConstVecReg = ::DummyConstVecReg;
+using VecRegContainer = ::DummyVecRegContainer;
+constexpr unsigned NumVecElemPerVecReg = ::DummyNumVecElemPerVecReg;
+constexpr size_t VecRegSizeBytes = ::DummyVecRegSizeBytes;
 
-// Floating point register file entry type
-typedef uint64_t FloatRegBits;
-typedef double FloatReg;
-typedef uint64_t MiscReg;
-
-// dummy typedef since we don't have CC regs
-typedef uint8_t CCReg;
-
-// dummy typedefs since we don't have vector regs
-constexpr unsigned NumVecElemPerVecReg = 2;
-using VecElem = uint32_t;
-using VecReg = ::VecRegT<VecElem, NumVecElemPerVecReg, false>;
-using ConstVecReg = ::VecRegT<VecElem, NumVecElemPerVecReg, true>;
-using VecRegContainer = VecReg::Container;
-// This has to be one to prevent warnings that are treated as errors
-constexpr unsigned NumVecRegs = 1;
+// Not applicable to Power
+using VecPredReg = ::DummyVecPredReg;
+using ConstVecPredReg = ::DummyConstVecPredReg;
+using VecPredRegContainer = ::DummyVecPredRegContainer;
+constexpr size_t VecPredRegSizeBits = ::DummyVecPredRegSizeBits;
+constexpr bool VecPredRegHasPackedRepr = ::DummyVecPredRegHasPackedRepr;
 
 // Constants Related to the number of registers
 const int NumIntArchRegs = 32;
@@ -75,6 +73,10 @@ const int NumInternalProcRegs = 0;
 
 const int NumIntRegs = NumIntArchRegs + NumIntSpecialRegs;
 const int NumFloatRegs = NumFloatArchRegs + NumFloatSpecialRegs;
+const int NumVecRegs = 1;  // Not applicable to Power
+                           // (1 to prevent warnings)
+const int NumVecPredRegs = 1;  // Not applicable to Power
+                               // (1 to prevent warnings)
 const int NumCCRegs = 0;
 const int NumMiscRegs = NUM_MISCREGS;
 
@@ -94,12 +96,6 @@ const int ZeroReg = NumIntRegs - 1;
 const int SyscallNumReg = 0;
 const int SyscallPseudoReturnReg = 3;
 const int SyscallSuccessReg = 3;
-
-typedef union {
-    IntReg   intreg;
-    FloatReg fpreg;
-    MiscReg  ctrlreg;
-} AnyReg;
 
 enum MiscIntRegNums {
     INTREG_CR = NumIntArchRegs,

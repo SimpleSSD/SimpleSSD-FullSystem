@@ -40,12 +40,11 @@
 
 #include "arch/hsail/gpu_types.hh"
 #include "base/logging.hh"
+#include "base/types.hh"
 #include "gpu-compute/misc.hh"
 
 namespace HsailISA
 {
-    typedef uint64_t MiscReg;
-
     class GPUISA
     {
       public:
@@ -54,12 +53,12 @@ namespace HsailISA
         }
 
         void
-        writeMiscReg(int opIdx, MiscReg operandVal)
+        writeMiscReg(int opIdx, RegVal operandVal)
         {
             fatal("HSAIL does not implement misc registers yet\n");
         }
 
-        MiscReg
+        RegVal
         readMiscReg(int opIdx) const
         {
             fatal("HSAIL does not implement misc registers yet\n");

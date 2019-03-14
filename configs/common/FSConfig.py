@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2012, 2015-2018 ARM Limited
+# Copyright (c) 2010-2012, 2015-2019 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -206,23 +206,8 @@ def makeSparcSystem(mem_mode, mdesc=None, cmdline=None):
 
 def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
                   dtb_filename=None, bare_metal=False, cmdline=None,
-                  external_memory="", ruby=False, security=False,
-                  ignore_dtb=False):
+                  external_memory="", ruby=False, security=False):
     assert machine_type
-
-    default_dtbs = {
-        "RealViewEB": None,
-        "RealViewPBX": None,
-        "VExpress_EMM": "vexpress.aarch32.ll_20131205.0-gem5.%dcpu.dtb" % num_cpus,
-        "VExpress_EMM64": "vexpress.aarch64.20140821.dtb",
-    }
-
-    default_kernels = {
-        "RealViewEB": "vmlinux.arm.smp.fb.2.6.38.8",
-        "RealViewPBX": "vmlinux.arm.smp.fb.2.6.38.8",
-        "VExpress_EMM": "vmlinux.aarch32.ll_20131205.0-gem5",
-        "VExpress_EMM64": "vmlinux.aarch64.20140821",
-    }
 
     pci_devices = []
 
@@ -251,13 +236,6 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
     # variable might have been an alias.
     machine_type = platform_class.__name__
     self.realview = platform_class()
-
-    if not dtb_filename and not (bare_metal or ignore_dtb):
-        try:
-            dtb_filename = default_dtbs[machine_type]
-        except KeyError:
-            fatal("No DTB specified and no default DTB known for '%s'" % \
-                  machine_type)
 
     if isinstance(self.realview, VExpress_EMM64):
         if os.path.split(mdesc.disk())[-1] == 'linux-aarch32-ael.img':
@@ -309,11 +287,11 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
     self.mem_ranges = []
     size_remain = long(Addr(mdesc.mem()))
     for region in self.realview._mem_regions:
-        if size_remain > long(region[1]):
-            self.mem_ranges.append(AddrRange(region[0], size=region[1]))
-            size_remain = size_remain - long(region[1])
+        if size_remain > long(region.size()):
+            self.mem_ranges.append(region)
+            size_remain = size_remain - long(region.size())
         else:
-            self.mem_ranges.append(AddrRange(region[0], size=size_remain))
+            self.mem_ranges.append(AddrRange(region.start, size=size_remain))
             size_remain = 0
             break
         warn("Memory size specified spans more than one region. Creating" \
@@ -328,12 +306,9 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
 
     if bare_metal:
         # EOT character on UART will end the simulation
-        self.realview.uart.end_on_eot = True
+        self.realview.uart[0].end_on_eot = True
     else:
-        if machine_type in default_kernels:
-            self.kernel = binary(default_kernels[machine_type])
-
-        if dtb_filename and not ignore_dtb:
+        if dtb_filename:
             self.dtb_filename = binary(dtb_filename)
 
         self.machine_type = machine_type if machine_type in ArmMachineType.map \
@@ -356,7 +331,10 @@ def makeArmSystem(mem_mode, machine_type, simplessd, num_cpus=1, mdesc=None,
             self.realview.setupBootLoader(None, self, binary)
         else:
             self.realview.setupBootLoader(self.membus, self, binary)
-        self.gic_cpu_addr = self.realview.gic.cpu_addr
+
+        if hasattr(self.realview.gic, 'cpu_addr'):
+            self.gic_cpu_addr = self.realview.gic.cpu_addr
+
         self.flags_addr = self.realview.realview_io.pio_addr + 0x30
 
         # This check is for users who have previously put 'android' in
@@ -626,7 +604,7 @@ def makeX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, self=None,
     # Set up the Intel MP table
     base_entries = []
     ext_entries = []
-    for i in xrange(numCPUs):
+    for i in range(numCPUs):
         bp = X86IntelMPProcessor(
                 local_apic_id = i,
                 local_apic_version = 0x14,
@@ -750,7 +728,8 @@ def makeLinuxX86System(mem_mode, simplessd, numCPUs=1, mdesc=None, Ruby=False,
 
     # Command line
     if not cmdline:
-        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=%(rootdev)s'
+        cmdline = 'earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=%(rootdev)s ' + \
+                         'pti=off spectre_v2=off l1tf=off nospec_store_bypass_disable no_stf_barrier'
     self.boot_osflags = fillInCmdline(mdesc, cmdline)
     self.kernel = binary('x86_64-vmlinux-2.6.22.9')
     return self

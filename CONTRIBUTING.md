@@ -36,13 +36,19 @@ High-level flow for submitting changes
            |
            |
            v
-    +------+------+
-    | Post review |
-    +------+------+
-           |
-           v
-    +--------+---------+
-    | Wait for reviews | <--------+
+    +-------------+
+    |  Run tests  |<--------------+
+    +------+------+               |
+           |                      |
+           |                      |
+           v                      |
+    +------+------+               |
+    | Post review |               |
+    +------+------+               |
+           |                      |
+           v                      |
+    +--------+---------+          |
+    | Wait for reviews |          |
     +--------+---------+          |
            |                      |
            |                      |
@@ -70,6 +76,19 @@ code-review site: https://gem5-review.googlesource.com. Before being able to
 submit your code to the mainline of gem5, the code is reviewed by others in the
 community. Additionally, the maintainer for that part of the code must sign off
 on it.
+
+Contributing long-lived feature branches
+----------------------------------------
+Oftentimes users or institutions add features that are necessarily complex,
+and require many changes on long-lived feature branches. In this case,
+maintaining a perfect history where all changes work individually is infeasible.
+When contributing long-lived feature branches back to gem5's public repository
+users may merge entire long-lived branches into a single changeset and contribute
+their code back as long as 1) the changes have been reviewed by the maintainer
+2) the maintainer agrees to allow such a change, and 3) the changes are passing
+the public tests. Changes that affect common code (outside of a specific
+maintainer's purview) will still need to follow the standard gem5 protocol.
+
 
 Cloning the gem5 repo to contribute
 ===================================
@@ -178,6 +197,13 @@ commit (HEAD).
  git commit --amend
 ```
 
+Running tests
+=============
+
+Before posting a change to the code review site, you should always run the
+quick tests!
+See TESTING.md for more information.
+
 Posting a review
 ================
 
@@ -244,12 +270,20 @@ changeset.
  git commit --amend
 ```
 
-Push change to gerrit as a draft
---------------------------------
+Push change to gerrit as a draft/private
+----------------------------------------
+
+See https://gerrit-review.googlesource.com/Documentation/intro-user.html#private-changes
+for details on private gerrit changes.
 
 ```
- git push origin HEAD:refs/drafts/master
+ git push origin HEAD:refs/for/master%private
 ```
+
+Once you have pushed your change as "private", you can log onto [gerrit]
+(https://gem5-review.googlesource.com) and once you're happy with the commit
+click the "unmark private" which may be hidden in the "more options" dropdown
+in the upper right corner.
 
 Push change bypassing gerrit
 -----------------------------

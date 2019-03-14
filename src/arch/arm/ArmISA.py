@@ -40,8 +40,8 @@ from m5.params import *
 from m5.proxy import *
 from m5.SimObject import SimObject
 
-from ArmPMU import ArmPMU
-from ISACommon import VecRegRenameMode
+from m5.objects.ArmPMU import ArmPMU
+from m5.objects.ISACommon import VecRegRenameMode
 
 # Enum for DecoderFlavour
 class DecoderFlavour(Enum): vals = ['Generic']
@@ -87,10 +87,6 @@ class ArmISA(SimObject):
     id_aa64afr1_el1 = Param.UInt64(0x0000000000000000,
         "AArch64 Auxiliary Feature Register 1")
 
-    # Initial vector register rename mode
-    vecRegRenameMode = Param.VecRegRenameMode('Full',
-        "Initial rename mode for vecregs")
-
     # 1 CTX CMPs | 2 WRPs | 2 BRPs | !PMU | !Trace | Debug v8-A
     id_aa64dfr0_el1 = Param.UInt64(0x0000000000101006,
         "AArch64 Debug Feature Register 0")
@@ -111,6 +107,8 @@ class ArmISA(SimObject):
     # Reserved for future expansion
     id_aa64mmfr1_el1 = Param.UInt64(0x0000000000000000,
         "AArch64 Memory Model Feature Register 1")
+    id_aa64mmfr2_el1 = Param.UInt64(0x0000000000000000,
+        "AArch64 Memory Model Feature Register 2")
 
     # Any access (read/write) to an unimplemented
     # Implementation Defined registers is not causing an Undefined Instruction.

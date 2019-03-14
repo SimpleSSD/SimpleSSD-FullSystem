@@ -95,7 +95,7 @@ ISA::hpmCounterEnabled(int misc_reg) const
     return (miscRegFile[counteren] & (1ULL << (hpmcounter))) > 0;
 }
 
-MiscReg
+RegVal
 ISA::readMiscRegNoEffect(int misc_reg) const
 {
     if (misc_reg > NumMiscRegs || misc_reg < 0) {
@@ -108,7 +108,7 @@ ISA::readMiscRegNoEffect(int misc_reg) const
     return miscRegFile[misc_reg];
 }
 
-MiscReg
+RegVal
 ISA::readMiscReg(int misc_reg, ThreadContext *tc)
 {
     switch (misc_reg) {
@@ -139,6 +139,12 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
             warn("Instruction counter disabled.\n");
             return 0;
         }
+      case MISCREG_IP:
+        return tc->getCpuPtr()->getInterruptController(tc->threadId())
+                              ->readIP();
+      case MISCREG_IE:
+        return tc->getCpuPtr()->getInterruptController(tc->threadId())
+                              ->readIE();
       default:
         // Try reading HPM counters
         // As a placeholder, all HPM counters are just cycle counters
@@ -158,7 +164,7 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
 }
 
 void
-ISA::setMiscRegNoEffect(int misc_reg, const MiscReg &val)
+ISA::setMiscRegNoEffect(int misc_reg, RegVal val)
 {
     if (misc_reg > NumMiscRegs || misc_reg < 0) {
         // Illegal CSR
@@ -169,13 +175,22 @@ ISA::setMiscRegNoEffect(int misc_reg, const MiscReg &val)
 }
 
 void
-ISA::setMiscReg(int misc_reg, const MiscReg &val, ThreadContext *tc)
+ISA::setMiscReg(int misc_reg, RegVal val, ThreadContext *tc)
 {
     if (misc_reg >= MISCREG_CYCLE && misc_reg <= MISCREG_HPMCOUNTER31) {
         // Ignore writes to HPM counters for now
         warn("Ignoring write to %s.\n", CSRData.at(misc_reg).name);
     } else {
-        setMiscRegNoEffect(misc_reg, val);
+        switch (misc_reg) {
+          case MISCREG_IP:
+            return tc->getCpuPtr()->getInterruptController(tc->threadId())
+                                  ->setIP(val);
+          case MISCREG_IE:
+            return tc->getCpuPtr()->getInterruptController(tc->threadId())
+                                  ->setIE(val);
+          default:
+            setMiscRegNoEffect(misc_reg, val);
+        }
     }
 }
 

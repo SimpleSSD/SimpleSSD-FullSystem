@@ -29,6 +29,7 @@
 
 from m5.SimObject import SimObject
 from m5.params import *
+from m5.proxy import *
 
 class BranchPredictor(SimObject):
     type = 'BranchPredictor'
@@ -36,7 +37,7 @@ class BranchPredictor(SimObject):
     cxx_header = "cpu/pred/bpred_unit.hh"
     abstract = True
 
-    numThreads = Param.Unsigned(1, "Number of threads")
+    numThreads = Param.Unsigned(Parent.numThreads, "Number of threads")
     BTBEntries = Param.Unsigned(4096, "Number of BTB entries")
     BTBTagSize = Param.Unsigned(16, "Size of the BTB tags, in bits")
     RASSize = Param.Unsigned(16, "RAS size")
@@ -86,19 +87,376 @@ class BiModeBP(BranchPredictor):
     choicePredictorSize = Param.Unsigned(8192, "Size of choice predictor")
     choiceCtrBits = Param.Unsigned(2, "Bits of choice counters")
 
-class LTAGE(BranchPredictor):
+class TAGEBase(SimObject):
+    type = 'TAGEBase'
+    cxx_class = 'TAGEBase'
+    cxx_header = "cpu/pred/tage_base.hh"
+
+    numThreads = Param.Unsigned(Parent.numThreads, "Number of threads")
+    instShiftAmt = Param.Unsigned(Parent.instShiftAmt,
+        "Number of bits to shift instructions by")
+
+    nHistoryTables = Param.Unsigned(7, "Number of history tables")
+    minHist = Param.Unsigned(5, "Minimum history size of TAGE")
+    maxHist = Param.Unsigned(130, "Maximum history size of TAGE")
+
+    tagTableTagWidths = VectorParam.Unsigned(
+        [0, 9, 9, 10, 10, 11, 11, 12], "Tag size in TAGE tag tables")
+    logTagTableSizes = VectorParam.Int(
+        [13, 9, 9, 9, 9, 9, 9, 9], "Log2 of TAGE table sizes")
+    logRatioBiModalHystEntries = Param.Unsigned(2,
+        "Log num of prediction entries for a shared hysteresis bit " \
+        "for the Bimodal")
+
+    tagTableCounterBits = Param.Unsigned(3, "Number of tag table counter bits")
+    tagTableUBits = Param.Unsigned(2, "Number of tag table u bits")
+
+    histBufferSize = Param.Unsigned(2097152,
+            "A large number to track all branch histories(2MEntries default)")
+
+    pathHistBits = Param.Unsigned(16, "Path history size")
+    logUResetPeriod = Param.Unsigned(18,
+        "Log period in number of branches to reset TAGE useful counters")
+    numUseAltOnNa = Param.Unsigned(1, "Number of USE_ALT_ON_NA counters")
+    useAltOnNaBits = Param.Unsigned(4, "Size of the USE_ALT_ON_NA counter(s)")
+
+    maxNumAlloc = Param.Unsigned(1,
+        "Max number of TAGE entries allocted on mispredict")
+
+    # List of enabled TAGE tables. If empty, all are enabled
+    noSkip = VectorParam.Bool([], "Vector of enabled TAGE tables")
+
+    speculativeHistUpdate = Param.Bool(True,
+        "Use speculative update for histories")
+
+# TAGE branch predictor as described in https://www.jilp.org/vol8/v8paper1.pdf
+# The default sizes below are for the 8C-TAGE configuration (63.5 Kbits)
+class TAGE(BranchPredictor):
+    type = 'TAGE'
+    cxx_class = 'TAGE'
+    cxx_header = "cpu/pred/tage.hh"
+    tage = Param.TAGEBase(TAGEBase(), "Tage object")
+
+class LTAGE_TAGE(TAGEBase):
+    nHistoryTables = 12
+    minHist = 4
+    maxHist = 640
+    tagTableTagWidths = [0, 7, 7, 8, 8, 9, 10, 11, 12, 12, 13, 14, 15]
+    logTagTableSizes = [14, 10, 10, 11, 11, 11, 11, 10, 10, 10, 10, 9, 9]
+    logUResetPeriod = 19
+
+class LoopPredictor(SimObject):
+    type = 'LoopPredictor'
+    cxx_class = 'LoopPredictor'
+    cxx_header = 'cpu/pred/loop_predictor.hh'
+
+    logSizeLoopPred = Param.Unsigned(8, "Log size of the loop predictor")
+    withLoopBits = Param.Unsigned(7, "Size of the WITHLOOP counter")
+    loopTableAgeBits = Param.Unsigned(8, "Number of age bits per loop entry")
+    loopTableConfidenceBits = Param.Unsigned(2,
+            "Number of confidence bits per loop entry")
+    loopTableTagBits = Param.Unsigned(14, "Number of tag bits per loop entry")
+    loopTableIterBits = Param.Unsigned(14, "Nuber of iteration bits per loop")
+    logLoopTableAssoc = Param.Unsigned(2, "Log loop predictor associativity")
+
+    # Parameters for enabling modifications to the loop predictor
+    # They have been copied from TAGE-GSC-IMLI
+    # (http://www.irisa.fr/alf/downloads/seznec/TAGE-GSC-IMLI.tar)
+    #
+    # All of them should be disabled to match the original LTAGE implementation
+    # (http://hpca23.cse.tamu.edu/taco/camino/cbp2/cbp-src/realistic-seznec.h)
+
+    # Add speculation
+    useSpeculation = Param.Bool(False, "Use speculation")
+
+    # Add hashing for calculating the loop table index
+    useHashing = Param.Bool(False, "Use hashing")
+
+    # Add a direction bit to the loop table entries
+    useDirectionBit = Param.Bool(False, "Use direction info")
+
+    # If true, use random to decide whether to allocate or not, and only try
+    # with one entry
+    restrictAllocation = Param.Bool(False,
+        "Restrict the allocation conditions")
+
+    initialLoopIter = Param.Unsigned(1, "Initial iteration number")
+    initialLoopAge = Param.Unsigned(255, "Initial age value")
+    optionalAgeReset = Param.Bool(True,
+        "Reset age bits optionally in some cases")
+
+class TAGE_SC_L_TAGE(TAGEBase):
+    type = 'TAGE_SC_L_TAGE'
+    cxx_class = 'TAGE_SC_L_TAGE'
+    cxx_header = "cpu/pred/tage_sc_l.hh"
+    abstract = True
+    tagTableTagWidths = [0]
+    numUseAltOnNa = 16
+    pathHistBits = 27
+    maxNumAlloc = 2
+    logUResetPeriod = 10
+    useAltOnNaBits = 5
+    # TODO No speculation implemented as of now
+    speculativeHistUpdate = False
+
+    # This size does not set the final sizes of the tables (it is just used
+    # for some calculations)
+    # Instead, the number of TAGE entries comes from shortTagsTageEntries and
+    # longTagsTageEntries
+    logTagTableSize = Param.Unsigned("Log size of each tag table")
+
+    shortTagsTageFactor = Param.Unsigned(
+        "Factor for calculating the total number of short tags TAGE entries")
+
+    longTagsTageFactor = Param.Unsigned(
+        "Factor for calculating the total number of long tags TAGE entries")
+
+    shortTagsSize = Param.Unsigned(8, "Size of the short tags")
+
+    longTagsSize = Param.Unsigned("Size of the long tags")
+
+    firstLongTagTable = Param.Unsigned("First table with long tags")
+
+    truncatePathHist = Param.Bool(True,
+        "Truncate the path history to its configured size")
+
+
+class TAGE_SC_L_TAGE_64KB(TAGE_SC_L_TAGE):
+    type = 'TAGE_SC_L_TAGE_64KB'
+    cxx_class = 'TAGE_SC_L_TAGE_64KB'
+    cxx_header = "cpu/pred/tage_sc_l_64KB.hh"
+    nHistoryTables = 36
+
+    minHist = 6
+    maxHist = 3000
+
+    tagTableUBits = 1
+
+    logTagTableSizes = [13]
+
+    # This is used to handle the 2-way associativity
+    # (all odd entries are set to one, and if the corresponding even entry
+    # is set to one, then there is a 2-way associativity for this pair)
+    # Entry 0 is for the bimodal and it is ignored
+    # Note: For this implementation, some odd entries are also set to 0 to save
+    # some bits
+    noSkip = [0,0,1,0,0,0,1,0,0,1,1,1,1,1,1,1,1,1,1,
+                1,1,1,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1]
+
+    logTagTableSize = 10
+    shortTagsTageFactor = 10
+    longTagsTageFactor = 20
+
+    longTagsSize = 12
+
+    firstLongTagTable = 13
+
+class TAGE_SC_L_TAGE_8KB(TAGE_SC_L_TAGE):
+    type = 'TAGE_SC_L_TAGE_8KB'
+    cxx_class = 'TAGE_SC_L_TAGE_8KB'
+    cxx_header = "cpu/pred/tage_sc_l_8KB.hh"
+
+    nHistoryTables = 30
+
+    minHist = 4
+    maxHist = 1000
+
+    logTagTableSize = 7
+    shortTagsTageFactor = 9
+    longTagsTageFactor = 17
+    longTagsSize = 12
+
+    logTagTableSizes = [12]
+
+    firstLongTagTable = 11
+
+    truncatePathHist = False
+
+    noSkip = [0,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1]
+
+    tagTableUBits = 2
+
+# LTAGE branch predictor as described in
+# https://www.irisa.fr/caps/people/seznec/L-TAGE.pdf
+# It is basically a TAGE predictor plus a loop predictor
+# The differnt TAGE sizes are updated according to the paper values (256 Kbits)
+class LTAGE(TAGE):
     type = 'LTAGE'
     cxx_class = 'LTAGE'
     cxx_header = "cpu/pred/ltage.hh"
 
-    logSizeBiMP = Param.Unsigned(14, "Log size of Bimodal predictor in bits")
-    logSizeTagTables = Param.Unsigned(11, "Log size of tag table in LTAGE")
-    logSizeLoopPred = Param.Unsigned(8, "Log size of the loop predictor")
-    nHistoryTables = Param.Unsigned(12, "Number of history tables")
-    tagTableCounterBits = Param.Unsigned(3, "Number of tag table counter bits")
-    histBufferSize = Param.Unsigned(2097152,
-            "A large number to track all branch histories(2MEntries default)")
-    minHist = Param.Unsigned(4, "Minimum history size of LTAGE")
-    maxHist = Param.Unsigned(640, "Maximum history size of LTAGE")
-    minTagWidth = Param.Unsigned(7, "Minimum tag size in tag tables")
+    tage = LTAGE_TAGE()
 
+    loop_predictor = Param.LoopPredictor(LoopPredictor(), "Loop predictor")
+
+class TAGE_SC_L_LoopPredictor(LoopPredictor):
+    type = 'TAGE_SC_L_LoopPredictor'
+    cxx_class  = 'TAGE_SC_L_LoopPredictor'
+    cxx_header = "cpu/pred/tage_sc_l.hh"
+    loopTableAgeBits = 4
+    loopTableConfidenceBits = 4
+    loopTableTagBits = 10
+    loopTableIterBits = 10
+    useSpeculation = False
+    useHashing = True
+    useDirectionBit = True
+    restrictAllocation = True
+    initialLoopIter = 0
+    initialLoopAge = 7
+    optionalAgeReset = False
+
+class StatisticalCorrector(SimObject):
+    type = 'StatisticalCorrector'
+    cxx_class  = 'StatisticalCorrector'
+    cxx_header = "cpu/pred/statistical_corrector.hh"
+    abstract = True
+
+    # Statistical corrector parameters
+
+    numEntriesFirstLocalHistories = Param.Unsigned(
+        "Number of entries for first local histories")
+
+    bwnb = Param.Unsigned("Num global backward branch GEHL lengths")
+    bwm = VectorParam.Int("Global backward branch GEHL lengths")
+    logBwnb = Param.Unsigned("Log num of global backward branch GEHL entries")
+
+    lnb = Param.Unsigned("Num first local history GEHL lenghts")
+    lm = VectorParam.Int("First local history GEHL lengths")
+    logLnb = Param.Unsigned("Log number of first local history GEHL entries")
+
+    inb = Param.Unsigned(1, "Num IMLI GEHL lenghts")
+    im = VectorParam.Int([8], "IMLI history GEHL lengths")
+    logInb = Param.Unsigned("Log number of IMLI GEHL entries")
+
+    logBias = Param.Unsigned("Log size of Bias tables")
+
+    logSizeUp = Param.Unsigned(6,
+        "Log size of update threshold counters tables")
+
+    chooserConfWidth = Param.Unsigned(7,
+        "Number of bits for the chooser counters")
+
+    updateThresholdWidth = Param.Unsigned(12,
+        "Number of bits for the update threshold counter")
+
+    pUpdateThresholdWidth = Param.Unsigned(8,
+        "Number of bits for the pUpdate threshold counters")
+
+    extraWeightsWidth = Param.Unsigned(6,
+        "Number of bits for the extra weights")
+
+    scCountersWidth = Param.Unsigned(6, "Statistical corrector counters width")
+
+# TAGE-SC-L branch predictor as desribed in
+# https://www.jilp.org/cbp2016/paper/AndreSeznecLimited.pdf
+# It is a modified LTAGE predictor plus a statistical corrector predictor
+# The TAGE modifications include bank interleaving and partial associativity
+# Two different sizes are proposed in the paper:
+# 8KB => See TAGE_SC_L_8KB below
+# 64KB => See TAGE_SC_L_64KB below
+# The TAGE_SC_L_8KB and TAGE_SC_L_64KB classes differ not only on the values
+# of some parameters, but also in some implementation details
+# Given this, the TAGE_SC_L class is left abstract
+# Note that as it is now, this branch predictor does not handle any type
+# of speculation: All the structures/histories are updated at commit time
+class TAGE_SC_L(LTAGE):
+    type = 'TAGE_SC_L'
+    cxx_class = 'TAGE_SC_L'
+    cxx_header = "cpu/pred/tage_sc_l.hh"
+    abstract = True
+
+    statistical_corrector = Param.StatisticalCorrector(
+        "Statistical Corrector")
+
+class TAGE_SC_L_64KB_LoopPredictor(TAGE_SC_L_LoopPredictor):
+    logSizeLoopPred = 5
+
+class TAGE_SC_L_8KB_LoopPredictor(TAGE_SC_L_LoopPredictor):
+    logSizeLoopPred = 3
+
+class TAGE_SC_L_64KB_StatisticalCorrector(StatisticalCorrector):
+    type = 'TAGE_SC_L_64KB_StatisticalCorrector'
+    cxx_class  = 'TAGE_SC_L_64KB_StatisticalCorrector'
+    cxx_header = "cpu/pred/tage_sc_l_64KB.hh"
+
+    pnb = Param.Unsigned(3, "Num variation global branch GEHL lengths")
+    pm = VectorParam.Int([25, 16, 9], "Variation global branch GEHL lengths")
+    logPnb = Param.Unsigned(9,
+        "Log number of variation global branch GEHL entries")
+
+    snb = Param.Unsigned(3, "Num second local history GEHL lenghts")
+    sm = VectorParam.Int([16, 11, 6], "Second local history GEHL lengths")
+    logSnb = Param.Unsigned(9,
+        "Log number of second local history GEHL entries")
+
+    tnb = Param.Unsigned(2, "Num third local history GEHL lenghts")
+    tm = VectorParam.Int([9, 4], "Third local history GEHL lengths")
+    logTnb = Param.Unsigned(10,
+        "Log number of third local history GEHL entries")
+
+    imnb = Param.Unsigned(2, "Num second IMLI GEHL lenghts")
+    imm = VectorParam.Int([10, 4], "Second IMLI history GEHL lengths")
+    logImnb = Param.Unsigned(9, "Log number of second IMLI GEHL entries")
+
+    numEntriesSecondLocalHistories = Param.Unsigned(16,
+        "Number of entries for second local histories")
+    numEntriesThirdLocalHistories = Param.Unsigned(16,
+        "Number of entries for second local histories")
+
+    numEntriesFirstLocalHistories = 256
+
+    logBias = 8
+
+    bwnb = 3
+    bwm = [40, 24, 10]
+    logBwnb = 10
+
+    lnb = 3
+    lm = [11, 6, 3]
+    logLnb = 10
+
+    logInb = 8
+
+class TAGE_SC_L_8KB_StatisticalCorrector(StatisticalCorrector):
+    type = 'TAGE_SC_L_8KB_StatisticalCorrector'
+    cxx_class  = 'TAGE_SC_L_8KB_StatisticalCorrector'
+    cxx_header = "cpu/pred/tage_sc_l_8KB.hh"
+    gnb = Param.Unsigned(2, "Num global branch GEHL lengths")
+    gm = VectorParam.Int([6, 3], "Global branch GEHL lengths")
+    logGnb = Param.Unsigned(7, "Log number of global branch GEHL entries")
+
+    numEntriesFirstLocalHistories = 64
+
+    logBias = 7
+
+    bwnb = 2
+    logBwnb = 7
+    bwm = [16, 8]
+
+    lnb = 2
+    logLnb = 7
+    lm = [6, 3]
+
+    logInb = 7
+
+# 64KB TAGE-SC-L branch predictor as described in
+# http://www.jilp.org/cbp2016/paper/AndreSeznecLimited.pdf
+class TAGE_SC_L_64KB(TAGE_SC_L):
+    type = 'TAGE_SC_L_64KB'
+    cxx_class = 'TAGE_SC_L_64KB'
+    cxx_header = "cpu/pred/tage_sc_l_64KB.hh"
+
+    tage = TAGE_SC_L_TAGE_64KB()
+    loop_predictor = TAGE_SC_L_64KB_LoopPredictor()
+    statistical_corrector = TAGE_SC_L_64KB_StatisticalCorrector()
+
+# 8KB TAGE-SC-L branch predictor as described in
+# http://www.jilp.org/cbp2016/paper/AndreSeznecLimited.pdf
+class TAGE_SC_L_8KB(TAGE_SC_L):
+    type = 'TAGE_SC_L_8KB'
+    cxx_class = 'TAGE_SC_L_8KB'
+    cxx_header = "cpu/pred/tage_sc_l_8KB.hh"
+
+    tage = TAGE_SC_L_TAGE_8KB()
+    loop_predictor = TAGE_SC_L_8KB_LoopPredictor()
+    statistical_corrector = TAGE_SC_L_8KB_StatisticalCorrector()

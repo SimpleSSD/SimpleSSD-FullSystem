@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2017 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2003-2005 The Regents of The University of Michigan
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * All rights reserved.
@@ -44,7 +56,6 @@
 #include "config/the_isa.hh"
 #include "cpu/op_class.hh"
 #include "cpu/reg_class.hh"
-#include "cpu/reg_class_impl.hh"
 #include "cpu/static_inst_fwd.hh"
 #include "cpu/thread_context.hh"
 #include "enums/StaticInstFlags.hh"
@@ -106,16 +117,17 @@ class StaticInst : public RefCounted, public StaticInstFlags
     /** @{ */
     int8_t _numVecDestRegs;
     int8_t _numVecElemDestRegs;
+    int8_t _numVecPredDestRegs;
     /** @} */
 
   public:
 
     /// @name Register information.
-    /// The sum of numFPDestRegs(), numIntDestRegs(), numVecDestRegs() and
-    /// numVecelemDestRegs() equals numDestRegs().  The former two functions
-    /// are used to track physical register usage for machines with separate
-    /// int & FP reg files, the next two is for machines with vector register
-    /// file.
+    /// The sum of numFPDestRegs(), numIntDestRegs(), numVecDestRegs(),
+    /// numVecElemDestRegs() and numVecPredDestRegs() equals numDestRegs().
+    /// The former two functions are used to track physical register usage for
+    /// machines with separate int & FP reg files, the next three are for
+    /// machines with vector and predicate register files.
     //@{
     /// Number of source registers.
     int8_t numSrcRegs()  const { return _numSrcRegs; }
@@ -129,6 +141,8 @@ class StaticInst : public RefCounted, public StaticInstFlags
     int8_t numVecDestRegs() const { return _numVecDestRegs; }
     /// Number of vector element destination regs.
     int8_t numVecElemDestRegs() const { return _numVecElemDestRegs; }
+    /// Number of predicate destination regs.
+    int8_t numVecPredDestRegs() const { return _numVecPredDestRegs; }
     /// Number of coprocesor destination regs.
     int8_t numCCDestRegs() const { return _numCCDestRegs; }
     //@}
@@ -144,6 +158,7 @@ class StaticInst : public RefCounted, public StaticInstFlags
     bool isMemRef()       const { return flags[IsMemRef]; }
     bool isLoad()         const { return flags[IsLoad]; }
     bool isStore()        const { return flags[IsStore]; }
+    bool isAtomic()       const { return flags[IsAtomic]; }
     bool isStoreConditional()     const { return flags[IsStoreConditional]; }
     bool isInstPrefetch() const { return flags[IsInstPrefetch]; }
     bool isDataPrefetch() const { return flags[IsDataPrefetch]; }
@@ -248,8 +263,8 @@ class StaticInst : public RefCounted, public StaticInstFlags
     StaticInst(const char *_mnemonic, ExtMachInst _machInst, OpClass __opClass)
         : _opClass(__opClass), _numSrcRegs(0), _numDestRegs(0),
           _numFPDestRegs(0), _numIntDestRegs(0), _numCCDestRegs(0),
-          _numVecDestRegs(0), _numVecElemDestRegs(0), machInst(_machInst),
-          mnemonic(_mnemonic), cachedDisassembly(0)
+          _numVecDestRegs(0), _numVecElemDestRegs(0), _numVecPredDestRegs(0),
+          machInst(_machInst), mnemonic(_mnemonic), cachedDisassembly(0)
     { }
 
   public:

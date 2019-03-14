@@ -257,6 +257,10 @@ template<> ArmFault::FaultVals ArmFaultVals<VirtualFastInterrupt>::vals(
     "Virtual FIQ",           0x01C, 0x100, 0x300, 0x500, 0x700, MODE_FIQ,
     4, 4, 0, 0, false, true,  true,  EC_INVALID
 );
+template<> ArmFault::FaultVals ArmFaultVals<IllegalInstSetStateFault>::vals(
+    "Illegal Inst Set State Fault",   0x004, 0x000, 0x200, 0x400, 0x600, MODE_UNDEFINED,
+    4, 2, 0, 0, true, false, false, EC_ILLEGAL_INST
+);
 template<> ArmFault::FaultVals ArmFaultVals<SupervisorTrap>::vals(
     // Some dummy values (SupervisorTrap is AArch64-only)
     "Supervisor Trap",   0x014, 0x000, 0x200, 0x400, 0x600, MODE_SVC,
@@ -287,27 +291,15 @@ template<> ArmFault::FaultVals ArmFaultVals<ArmSev>::vals(
     "ArmSev Flush",          0x000, 0x000, 0x000, 0x000, 0x000, MODE_SVC,
     0, 0, 0, 0, false, true,  true,  EC_UNKNOWN
 );
-template<> ArmFault::FaultVals ArmFaultVals<IllegalInstSetStateFault>::vals(
-    // Some dummy values (SPAlignmentFault is AArch64-only)
-    "Illegal Inst Set State Fault",   0x000, 0x000, 0x200, 0x400, 0x600, MODE_SVC,
-    0, 0, 0, 0, true, false, false, EC_ILLEGAL_INST
-);
 
 Addr
 ArmFault::getVector(ThreadContext *tc)
 {
     Addr base;
 
-    // ARM ARM issue C B1.8.1
-    bool haveSecurity = ArmSystem::haveSecurity(tc);
-
-    // panic if SCTLR.VE because I have no idea what to do with vectored
-    // interrupts
-    SCTLR sctlr = tc->readMiscReg(MISCREG_SCTLR);
-    assert(!sctlr.ve);
     // Check for invalid modes
     CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
-    assert(haveSecurity                      || cpsr.mode != MODE_MON);
+    assert(ArmSystem::haveSecurity(tc) || cpsr.mode != MODE_MON);
     assert(ArmSystem::haveVirtualization(tc) || cpsr.mode != MODE_HYP);
 
     switch (cpsr.mode)
@@ -319,13 +311,16 @@ ArmFault::getVector(ThreadContext *tc)
         base = tc->readMiscReg(MISCREG_HVBAR);
         break;
       default:
+        SCTLR sctlr = tc->readMiscReg(MISCREG_SCTLR);
         if (sctlr.v) {
             base = HighVecs;
         } else {
-            base = haveSecurity ? tc->readMiscReg(MISCREG_VBAR) : 0;
+            base = ArmSystem::haveSecurity(tc) ?
+                tc->readMiscReg(MISCREG_VBAR) : 0;
         }
         break;
     }
+
     return base + offset(tc);
 }
 
@@ -601,6 +596,7 @@ ArmFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     pc.nextJazelle(pc.jazelle());
     pc.aarch64(!cpsr.width);
     pc.nextAArch64(!cpsr.width);
+    pc.illegalExec(false);
     tc->pcState(pc);
 }
 
@@ -684,6 +680,7 @@ ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
     PCState pc(new_pc);
     pc.aarch64(!cpsr.width);
     pc.nextAArch64(!cpsr.width);
+    pc.illegalExec(false);
     tc->pcState(pc);
 
     // If we have a valid instruction then use it to annotate this fault with
@@ -694,6 +691,24 @@ ArmFault::invoke64(ThreadContext *tc, const StaticInstPtr &inst)
     // Save exception syndrome
     if ((nextMode() != MODE_IRQ) && (nextMode() != MODE_FIQ))
         setSyndrome(tc, getSyndromeReg64());
+}
+
+Addr
+Reset::getVector(ThreadContext *tc)
+{
+    Addr base;
+
+    // Check for invalid modes
+    CPSR M5_VAR_USED cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
+    assert(ArmSystem::haveSecurity(tc) || cpsr.mode != MODE_MON);
+    assert(ArmSystem::haveVirtualization(tc) || cpsr.mode != MODE_HYP);
+
+    // RVBAR is aliased (implemented as) MVBAR in gem5, since the two
+    // are mutually exclusive; there is no need to check here for
+    // which register to use since they hold the same value
+    base = tc->readMiscReg(MISCREG_MVBAR);
+
+    return base + offset(tc);
 }
 
 void
@@ -717,7 +732,7 @@ Reset::invoke(ThreadContext *tc, const StaticInstPtr &inst)
         }
     } else {
         // Advance the PC to the IMPLEMENTATION DEFINED reset value
-        PCState pc = ArmSystem::resetAddr64(tc);
+        PCState pc = ArmSystem::resetAddr(tc);
         pc.aarch64(true);
         pc.nextAArch64(true);
         tc->pcState(pc);
@@ -1532,8 +1547,6 @@ SoftwareBreakpoint::SoftwareBreakpoint(ExtMachInst _mach_inst, uint32_t _iss)
 bool
 SoftwareBreakpoint::routeToHyp(ThreadContext *tc) const
 {
-    assert(from64);
-
     const bool have_el2 = ArmSystem::haveVirtualization(tc);
 
     const HCR hcr  = tc->readMiscRegNoEffect(MISCREG_HCR_EL2);
@@ -1541,6 +1554,12 @@ SoftwareBreakpoint::routeToHyp(ThreadContext *tc) const
 
     return have_el2 && !inSecureState(tc) && fromEL <= EL1 &&
         (hcr.tge || mdcr.tde);
+}
+
+ExceptionClass
+SoftwareBreakpoint::ec(ThreadContext *tc) const
+{
+    return from64 ? EC_SOFTWARE_BREAKPOINT_64 : vals.ec;
 }
 
 void

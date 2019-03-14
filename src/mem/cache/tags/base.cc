@@ -51,8 +51,8 @@
 #include <cassert>
 
 #include "base/types.hh"
-#include "mem/cache/base.hh"
-#include "mem/packet.hh"
+#include "mem/cache/replacement_policies/replaceable_entry.hh"
+#include "mem/cache/tags/indexing_policies/base.hh"
 #include "mem/request.hh"
 #include "sim/core.hh"
 #include "sim/sim_exit.hh"
@@ -60,46 +60,61 @@
 
 BaseTags::BaseTags(const Params *p)
     : ClockedObject(p), blkSize(p->block_size), blkMask(blkSize - 1),
-      size(p->size),
-      lookupLatency(p->tag_latency),
-      accessLatency(p->sequential_access ?
-                    p->tag_latency + p->data_latency :
-                    std::max(p->tag_latency, p->data_latency)),
-      cache(nullptr),
+      size(p->size), lookupLatency(p->tag_latency),
+      system(p->system), indexingPolicy(p->indexing_policy),
       warmupBound((p->warmup_percentage/100.0) * (p->size / p->block_size)),
       warmedUp(false), numBlocks(p->size / p->block_size),
       dataBlks(new uint8_t[p->size]) // Allocate data storage in one big chunk
 {
 }
 
-void
-BaseTags::setCache(BaseCache *_cache)
+ReplaceableEntry*
+BaseTags::findBlockBySetAndWay(int set, int way) const
 {
-    assert(!cache);
-    cache = _cache;
+    return indexingPolicy->getEntry(set, way);
+}
+
+CacheBlk*
+BaseTags::findBlock(Addr addr, bool is_secure) const
+{
+    // Extract block tag
+    Addr tag = extractTag(addr);
+
+    // Find possible entries that may contain the given address
+    const std::vector<ReplaceableEntry*> entries =
+        indexingPolicy->getPossibleEntries(addr);
+
+    // Search for block
+    for (const auto& location : entries) {
+        CacheBlk* blk = static_cast<CacheBlk*>(location);
+        if ((blk->tag == tag) && blk->isValid() &&
+            (blk->isSecure() == is_secure)) {
+            return blk;
+        }
+    }
+
+    // Did not find block
+    return nullptr;
 }
 
 void
-BaseTags::insertBlock(PacketPtr pkt, CacheBlk *blk)
+BaseTags::insertBlock(const PacketPtr pkt, CacheBlk *blk)
 {
     assert(!blk->isValid());
-
-    // Get address
-    Addr addr = pkt->getAddr();
 
     // Previous block, if existed, has been removed, and now we have
     // to insert the new one
 
     // Deal with what we are bringing in
     MasterID master_id = pkt->req->masterId();
-    assert(master_id < cache->system->maxMasters());
+    assert(master_id < system->maxMasters());
     occupancies[master_id]++;
 
     // Insert block with tag, src master id and task id
-    blk->insert(extractTag(addr), pkt->isSecure(), master_id,
+    blk->insert(extractTag(pkt->getAddr()), pkt->isSecure(), master_id,
                 pkt->req->taskId());
 
-    tagsInUse++;
+    // Check if cache warm up is done
     if (!warmedUp && tagsInUse.value() >= warmupBound) {
         warmedUp = true;
         warmupCycle = curTick();
@@ -108,6 +123,12 @@ BaseTags::insertBlock(PacketPtr pkt, CacheBlk *blk)
     // We only need to write into one tag and one data block.
     tagAccesses += 1;
     dataAccesses += 1;
+}
+
+Addr
+BaseTags::extractTag(const Addr addr) const
+{
+    return indexingPolicy->extractTag(addr);
 }
 
 void
@@ -170,8 +191,7 @@ BaseTags::print()
 
     auto print_blk = [&str](CacheBlk &blk) {
         if (blk.isValid())
-            str += csprintf("\tset: %d way: %d %s\n", blk.set, blk.way,
-                            blk.print());
+            str += csprintf("\tBlock: %s\n", blk.print());
     };
     forEachBlk(print_blk);
 
@@ -216,13 +236,13 @@ BaseTags::regStats()
         ;
 
     occupancies
-        .init(cache->system->maxMasters())
+        .init(system->maxMasters())
         .name(name() + ".occ_blocks")
         .desc("Average occupied blocks per requestor")
         .flags(nozero | nonan)
         ;
-    for (int i = 0; i < cache->system->maxMasters(); i++) {
-        occupancies.subname(i, cache->system->getMasterName(i));
+    for (int i = 0; i < system->maxMasters(); i++) {
+        occupancies.subname(i, system->getMasterName(i));
     }
 
     avgOccs
@@ -230,8 +250,8 @@ BaseTags::regStats()
         .desc("Average percentage of cache occupancy")
         .flags(nozero | total)
         ;
-    for (int i = 0; i < cache->system->maxMasters(); i++) {
-        avgOccs.subname(i, cache->system->getMasterName(i));
+    for (int i = 0; i < system->maxMasters(); i++) {
+        avgOccs.subname(i, system->getMasterName(i));
     }
 
     avgOccs = occupancies / Stats::constant(numBlocks);

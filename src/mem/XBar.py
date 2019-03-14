@@ -39,12 +39,13 @@
 # Authors: Nathan Binkert
 #          Andreas Hansson
 
-from MemObject import MemObject
-from System import System
+from m5.objects.System import System
 from m5.params import *
 from m5.proxy import *
 from m5.SimObject import SimObject
 from m5.defines import buildEnv
+
+from m5.objects.MemObject import MemObject
 
 class BaseXBar(MemObject):
     type = 'BaseXBar'

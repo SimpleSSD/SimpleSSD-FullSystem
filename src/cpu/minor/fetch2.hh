@@ -171,6 +171,12 @@ class Fetch2 : public Named
     Stats::Scalar vecInstructions;
     Stats::Scalar loadInstructions;
     Stats::Scalar storeInstructions;
+    Stats::Scalar amoInstructions;
+
+  public:
+    /** Dump the whole contents of the input buffer.  Useful after a
+     *  prediction changes control flow */
+    void dumpAllInput(ThreadID tid);
 
   protected:
     /** Get a piece of data to work on from the inputBuffer, or 0 if there
@@ -179,10 +185,6 @@ class Fetch2 : public Named
 
     /** Pop an element off the input buffer, if there are any */
     void popInput(ThreadID tid);
-
-    /** Dump the whole contents of the input buffer.  Useful after a
-     *  prediction changes control flow */
-    void dumpAllInput(ThreadID tid);
 
     /** Update local branch prediction structures from feedback from
      *  Execute. */

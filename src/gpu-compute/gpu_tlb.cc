@@ -45,6 +45,7 @@
 #include "arch/x86/regs/misc.hh"
 #include "arch/x86/x86_traits.hh"
 #include "base/bitfield.hh"
+#include "base/logging.hh"
 #include "base/output.hh"
 #include "base/trace.hh"
 #include "cpu/base.hh"
@@ -287,7 +288,7 @@ namespace X86ISA
     }
 
     Fault
-    GpuTLB::translateInt(RequestPtr req, ThreadContext *tc)
+    GpuTLB::translateInt(const RequestPtr &req, ThreadContext *tc)
     {
         DPRINTF(GPUTLB, "Addresses references internal memory.\n");
         Addr vaddr = req->getVaddr();
@@ -616,7 +617,7 @@ namespace X86ISA
             //The index is multiplied by the size of a MiscReg so that
             //any memory dependence calculations will not see these as
             //overlapping.
-            req->setPaddr(regNum * sizeof(MiscReg));
+            req->setPaddr(regNum * sizeof(RegVal));
             return NoFault;
         } else if (prefix == IntAddrPrefixIO) {
             // TODO If CPL > IOPL or in virtual mode, check the I/O permission
@@ -629,7 +630,7 @@ namespace X86ISA
 
             if (IOPort == 0xCF8 && req->getSize() == 4) {
                 req->setFlags(Request::MMAPPED_IPR);
-                req->setPaddr(MISCREG_PCI_CONFIG_ADDRESS * sizeof(MiscReg));
+                req->setPaddr(MISCREG_PCI_CONFIG_ADDRESS * sizeof(RegVal));
             } else if ((IOPort & ~mask(2)) == 0xCFC) {
                 req->setFlags(Request::UNCACHEABLE);
 
@@ -662,7 +663,8 @@ namespace X86ISA
      * On a hit it will update the LRU stack.
      */
     bool
-    GpuTLB::tlbLookup(RequestPtr req, ThreadContext *tc, bool update_stats)
+    GpuTLB::tlbLookup(const RequestPtr &req,
+                      ThreadContext *tc, bool update_stats)
     {
         bool tlb_hit = false;
     #ifndef NDEBUG
@@ -710,7 +712,7 @@ namespace X86ISA
     }
 
     Fault
-    GpuTLB::translate(RequestPtr req, ThreadContext *tc,
+    GpuTLB::translate(const RequestPtr &req, ThreadContext *tc,
                       Translation *translation, Mode mode,
                       bool &delayedResponse, bool timing, int &latency)
     {
@@ -913,8 +915,8 @@ namespace X86ISA
     };
 
     Fault
-    GpuTLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode,
-                            int &latency)
+    GpuTLB::translateAtomic(const RequestPtr &req, ThreadContext *tc,
+                            Mode mode, int &latency)
     {
         bool delayedResponse;
 
@@ -923,7 +925,7 @@ namespace X86ISA
     }
 
     void
-    GpuTLB::translateTiming(RequestPtr req, ThreadContext *tc,
+    GpuTLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
             Translation *translation, Mode mode, int &latency)
     {
         bool delayedResponse;
@@ -1069,7 +1071,7 @@ namespace X86ISA
         }
 
         tlbOutcome lookup_outcome = TLB_MISS;
-        RequestPtr tmp_req = pkt->req;
+        const RequestPtr &tmp_req = pkt->req;
 
         // Access the TLB and figure out if it's a hit or a miss.
         bool success = tlbLookup(tmp_req, tmp_tc, update_stats);
@@ -1149,16 +1151,16 @@ namespace X86ISA
 
         if ((inUser && !tlb_entry->user) ||
             (mode == BaseTLB::Write && badWrite)) {
-           // The page must have been present to get into the TLB in
-           // the first place. We'll assume the reserved bits are
-           // fine even though we're not checking them.
-           assert(false);
+            // The page must have been present to get into the TLB in
+            // the first place. We'll assume the reserved bits are
+            // fine even though we're not checking them.
+            panic("Page fault detected");
         }
 
         if (storeCheck && badWrite) {
-           // This would fault if this were a write, so return a page
-           // fault that reflects that happening.
-           assert(false);
+            // This would fault if this were a write, so return a page
+            // fault that reflects that happening.
+            panic("Page fault detected");
         }
     }
 
@@ -1361,7 +1363,7 @@ namespace X86ISA
              */
             handleTranslationReturn(virtPageAddr, TLB_MISS, pkt);
         } else {
-            assert(false);
+            panic("Unexpected TLB outcome %d", outcome);
         }
     }
 
@@ -1606,7 +1608,7 @@ namespace X86ISA
     {
         // The CPUSidePort never sends anything but replies. No retries
         // expected.
-        assert(false);
+        panic("recvReqRetry called");
     }
 
     AddrRangeList
@@ -1647,7 +1649,7 @@ namespace X86ISA
     {
         // No retries should reach the TLB. The retries
         // should only reach the TLBCoalescer.
-        assert(false);
+        panic("recvReqRetry called");
     }
 
     void

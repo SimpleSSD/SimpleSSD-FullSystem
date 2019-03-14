@@ -220,7 +220,7 @@ def template CSRExecute {{
         %(op_decl)s;
         %(op_rd)s;
 
-        MiscReg data, olddata;
+        RegVal data, olddata;
         switch (csr) {
           case CSR_FCSR:
             olddata = xc->readMiscReg(MISCREG_FFLAGS) |
@@ -231,7 +231,7 @@ def template CSRExecute {{
                 olddata = xc->readMiscReg(CSRData.at(csr).physIndex);
             } else {
                 std::string error = csprintf("Illegal CSR index %#x\n", csr);
-                fault = make_shared<IllegalInstFault>(error);
+                fault = make_shared<IllegalInstFault>(error, machInst);
                 olddata = 0;
             }
             break;
@@ -252,14 +252,28 @@ def template CSRExecute {{
                     if (bits(csr, 11, 10) == 0x3) {
                         std::string error = csprintf("CSR %s is read-only\n",
                                                      CSRData.at(csr).name);
-                        fault = make_shared<IllegalInstFault>(error);
+                        fault = make_shared<IllegalInstFault>(error, machInst);
                     } else {
                         DPRINTF(RiscvMisc, "Writing %#x to CSR %s.\n", data,
                                 CSRData.at(csr).name);
+                        INTERRUPT oldinterrupt = olddata;
+                        INTERRUPT newinterrupt = data;
                         switch (csr) {
                           case CSR_FCSR:
                             xc->setMiscReg(MISCREG_FFLAGS, bits(data, 4, 0));
                             xc->setMiscReg(MISCREG_FRM, bits(data, 7, 5));
+                            break;
+                          case CSR_MIP: case CSR_MIE:
+                            if (oldinterrupt.mei == newinterrupt.mei &&
+                                oldinterrupt.mti == newinterrupt.mti &&
+                                oldinterrupt.msi == newinterrupt.msi) {
+                                xc->setMiscReg(CSRData.at(csr).physIndex,data);
+                            } else {
+                                std::string error = "Interrupt m bits are "
+                                                    "read-only\n";
+                                fault = make_shared<IllegalInstFault>(error,
+                                                                     machInst);
+                            }
                             break;
                           default:
                             xc->setMiscReg(CSRData.at(csr).physIndex, data);

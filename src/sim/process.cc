@@ -156,7 +156,7 @@ Process::Process(ProcessParams *params, EmulationPageTable *pTable,
 
 void
 Process::clone(ThreadContext *otc, ThreadContext *ntc,
-               Process *np, TheISA::IntReg flags)
+               Process *np, RegVal flags)
 {
 #ifndef CLONE_VM
 #define CLONE_VM 0
@@ -423,7 +423,7 @@ Process::syscall(int64_t callnum, ThreadContext *tc, Fault *fault)
     desc->doSyscall(callnum, this, tc, fault);
 }
 
-IntReg
+RegVal
 Process::getSyscallArg(ThreadContext *tc, int &i, int width)
 {
     return getSyscallArg(tc, i);
@@ -623,14 +623,19 @@ ProcessParams::create()
         fatal("Unknown/unsupported operating system.");
     }
 #elif THE_ISA == RISCV_ISA
-    if (obj_file->getArch() != ObjectFile::Riscv)
+    ObjectFile::Arch arch = obj_file->getArch();
+    if (arch != ObjectFile::Riscv64 && arch != ObjectFile::Riscv32)
         fatal("Object file architecture does not match compiled ISA (RISCV).");
     switch (obj_file->getOpSys()) {
       case ObjectFile::UnknownOpSys:
         warn("Unknown operating system; assuming Linux.");
         // fall through
       case ObjectFile::Linux:
-        process = new RiscvLinuxProcess(this, obj_file);
+        if (arch == ObjectFile::Riscv64) {
+            process = new RiscvLinuxProcess64(this, obj_file);
+        } else {
+            process = new RiscvLinuxProcess32(this, obj_file);
+        }
         break;
       default:
         fatal("Unknown/unsupported operating system.");

@@ -44,11 +44,16 @@ from m5.objects import *
 from common.Benchmarks import *
 
 from common import CpuConfig
+from common import BPConfig
 from common import MemConfig
 from common import PlatformConfig
 
 def _listCpuTypes(option, opt, value, parser):
     CpuConfig.print_cpu_list()
+    sys.exit(0)
+
+def _listBPTypes(option, opt, value, parser):
+    BPConfig.print_bp_list()
     sys.exit(0)
 
 def _listMemTypes(option, opt, value, parser):
@@ -125,6 +130,14 @@ def addNoISAOptions(parser):
     parser.add_option("--maxtime", type="float", default=None,
                       help="Run to the specified absolute simulated time in "
                       "seconds")
+    parser.add_option("-P", "--param", action="append", default=[],
+        help="Set a SimObject parameter relative to the root node. "
+             "An extended Python multi range slicing syntax can be used "
+             "for arrays. For example: "
+             "'system.cpu[0,1,3:8:2].max_insts_all_threads = 42' "
+             "sets max_insts_all_threads for cpus 0, 1, 3, 5 and 7 "
+             "Direct parameters of the root object are not accessible, "
+             "only parameters of its children.")
 
 # Add common options that assume a non-NULL ISA.
 def addCommonOptions(parser):
@@ -138,6 +151,15 @@ def addCommonOptions(parser):
     parser.add_option("--cpu-type", type="choice", default="AtomicSimpleCPU",
                       choices=CpuConfig.cpu_names(),
                       help = "type of cpu to run with")
+    parser.add_option("--list-bp-types",
+                      action="callback", callback=_listBPTypes,
+                      help="List available branch predictor types")
+    parser.add_option("--bp-type", type="choice", default=None,
+                      choices=BPConfig.bp_names(),
+                      help = """
+                      type of branch predictor to run with
+                      (if not set, use the default branch predictor of
+                      the selected CPU)""")
     parser.add_option("--checker", action="store_true");
     parser.add_option("--cpu-clock", action="store", type="string",
                       default='2GHz',
@@ -163,8 +185,6 @@ def addCommonOptions(parser):
 
     parser.add_option("-l", "--lpae", action="store_true")
     parser.add_option("-V", "--virtualisation", action="store_true")
-
-    parser.add_option("--fastmem", action="store_true")
 
     # dist-gem5 options
     parser.add_option("--dist", action="store_true",
@@ -319,8 +339,9 @@ def addFSOptions(parser):
     # System options
     parser.add_option("--kernel", action="store", type="string")
     parser.add_option("--os-type", action="store", type="choice",
-            choices=os_types[buildEnv['TARGET_ISA']], default="linux",
-            help="Specifies type of OS to boot")
+                      choices=os_types[str(buildEnv['TARGET_ISA'])],
+                      default="linux",
+                      help="Specifies type of OS to boot")
     parser.add_option("--script", action="store", type="string")
     parser.add_option("--frame-capture", action="store_true",
             help="Stores changed frame buffers from the VNC server to compressed "\
@@ -343,8 +364,6 @@ def addFSOptions(parser):
         parser.add_option("--enable-context-switch-stats-dump", \
                 action="store_true", help="Enable stats dump at context "\
                 "switches and dump tasks file (required for Streamline)")
-        parser.add_option("--generate-dtb", action="store_true", default=False,
-                    help="Automatically generate a dtb file")
 
     # Benchmark options
     parser.add_option("--dual", action="store_true",

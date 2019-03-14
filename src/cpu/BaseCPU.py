@@ -52,51 +52,51 @@ from m5.params import *
 from m5.proxy import *
 from m5.util.fdthelper import *
 
-from XBar import L2XBar
-from InstTracer import InstTracer
-from CPUTracers import ExeTracer
-from MemObject import MemObject
-from SubSystem import SubSystem
-from ClockDomain import *
-from Platform import Platform
+from m5.objects.XBar import L2XBar
+from m5.objects.InstTracer import InstTracer
+from m5.objects.CPUTracers import ExeTracer
+from m5.objects.MemObject import MemObject
+from m5.objects.SubSystem import SubSystem
+from m5.objects.ClockDomain import *
+from m5.objects.Platform import Platform
 
 default_tracer = ExeTracer()
 
 if buildEnv['TARGET_ISA'] == 'alpha':
-    from AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
-    from AlphaInterrupts import AlphaInterrupts
-    from AlphaISA import AlphaISA
+    from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
+    from m5.objects.AlphaInterrupts import AlphaInterrupts
+    from m5.objects.AlphaISA import AlphaISA
     default_isa_class = AlphaISA
 elif buildEnv['TARGET_ISA'] == 'sparc':
-    from SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB
-    from SparcInterrupts import SparcInterrupts
-    from SparcISA import SparcISA
+    from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB
+    from m5.objects.SparcInterrupts import SparcInterrupts
+    from m5.objects.SparcISA import SparcISA
     default_isa_class = SparcISA
 elif buildEnv['TARGET_ISA'] == 'x86':
-    from X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB
-    from X86LocalApic import X86LocalApic
-    from X86ISA import X86ISA
+    from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB
+    from m5.objects.X86LocalApic import X86LocalApic
+    from m5.objects.X86ISA import X86ISA
     default_isa_class = X86ISA
 elif buildEnv['TARGET_ISA'] == 'mips':
-    from MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB
-    from MipsInterrupts import MipsInterrupts
-    from MipsISA import MipsISA
+    from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB
+    from m5.objects.MipsInterrupts import MipsInterrupts
+    from m5.objects.MipsISA import MipsISA
     default_isa_class = MipsISA
 elif buildEnv['TARGET_ISA'] == 'arm':
-    from ArmTLB import ArmTLB as ArchDTB, ArmTLB as ArchITB
-    from ArmTLB import ArmStage2IMMU, ArmStage2DMMU
-    from ArmInterrupts import ArmInterrupts
-    from ArmISA import ArmISA
+    from m5.objects.ArmTLB import ArmTLB as ArchDTB, ArmTLB as ArchITB
+    from m5.objects.ArmTLB import ArmStage2IMMU, ArmStage2DMMU
+    from m5.objects.ArmInterrupts import ArmInterrupts
+    from m5.objects.ArmISA import ArmISA
     default_isa_class = ArmISA
 elif buildEnv['TARGET_ISA'] == 'power':
-    from PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB
-    from PowerInterrupts import PowerInterrupts
-    from PowerISA import PowerISA
+    from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB
+    from m5.objects.PowerInterrupts import PowerInterrupts
+    from m5.objects.PowerISA import PowerISA
     default_isa_class = PowerISA
 elif buildEnv['TARGET_ISA'] == 'riscv':
-    from RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB
-    from RiscvInterrupts import RiscvInterrupts
-    from RiscvISA import RiscvISA
+    from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB
+    from m5.objects.RiscvInterrupts import RiscvInterrupts
+    from m5.objects.RiscvISA import RiscvISA
     default_isa_class = RiscvISA
 
 class BaseCPU(MemObject):
@@ -241,26 +241,26 @@ class BaseCPU(MemObject):
 
     def createInterruptController(self):
         if buildEnv['TARGET_ISA'] == 'sparc':
-            self.interrupts = [SparcInterrupts() for i in xrange(self.numThreads)]
+            self.interrupts = [SparcInterrupts() for i in range(self.numThreads)]
         elif buildEnv['TARGET_ISA'] == 'alpha':
-            self.interrupts = [AlphaInterrupts() for i in xrange(self.numThreads)]
+            self.interrupts = [AlphaInterrupts() for i in range(self.numThreads)]
         elif buildEnv['TARGET_ISA'] == 'x86':
             self.apic_clk_domain = DerivedClockDomain(clk_domain =
                                                       Parent.clk_domain,
                                                       clk_divider = 16)
             self.interrupts = [X86LocalApic(clk_domain = self.apic_clk_domain,
                                            pio_addr=0x2000000000000000)
-                               for i in xrange(self.numThreads)]
+                               for i in range(self.numThreads)]
             _localApic = self.interrupts
         elif buildEnv['TARGET_ISA'] == 'mips':
-            self.interrupts = [MipsInterrupts() for i in xrange(self.numThreads)]
+            self.interrupts = [MipsInterrupts() for i in range(self.numThreads)]
         elif buildEnv['TARGET_ISA'] == 'arm':
-            self.interrupts = [ArmInterrupts() for i in xrange(self.numThreads)]
+            self.interrupts = [ArmInterrupts() for i in range(self.numThreads)]
         elif buildEnv['TARGET_ISA'] == 'power':
-            self.interrupts = [PowerInterrupts() for i in xrange(self.numThreads)]
+            self.interrupts = [PowerInterrupts() for i in range(self.numThreads)]
         elif buildEnv['TARGET_ISA'] == 'riscv':
             self.interrupts = \
-                [RiscvInterrupts() for i in xrange(self.numThreads)]
+                [RiscvInterrupts() for i in range(self.numThreads)]
         else:
             print("Don't know what Interrupt Controller to use for ISA %s" %
                   buildEnv['TARGET_ISA'])
@@ -318,7 +318,7 @@ class BaseCPU(MemObject):
         # If no ISAs have been created, assume that the user wants the
         # default ISA.
         if len(self.isa) == 0:
-            self.isa = [ default_isa_class() for i in xrange(self.numThreads) ]
+            self.isa = [ default_isa_class() for i in range(self.numThreads) ]
         else:
             if len(self.isa) != int(self.numThreads):
                 raise RuntimeError("Number of ISA instances doesn't "
@@ -365,7 +365,7 @@ class BaseCPU(MemObject):
                 warn("Platform not found for device tree generation; " \
                      "system or multiple CPUs may not start")
 
-            freq = round(self.clk_domain.unproxy(self).clock[0].frequency)
+            freq = int(self.clk_domain.unproxy(self).clock[0].frequency)
             node.append(FdtPropertyWords("clock-frequency", freq))
 
             # Unique key for this CPU

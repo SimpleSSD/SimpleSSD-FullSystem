@@ -468,7 +468,7 @@ BaseSimpleCPU::checkForInterrupts()
 
 
 void
-BaseSimpleCPU::setupFetchRequest(Request *req)
+BaseSimpleCPU::setupFetchRequest(const RequestPtr &req)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
@@ -493,7 +493,7 @@ BaseSimpleCPU::preExecute()
     // maintain $r0 semantics
     thread->setIntReg(ZeroReg, 0);
 #if THE_ISA == ALPHA_ISA
-    thread->setFloatReg(ZeroReg, 0.0);
+    thread->setFloatReg(ZeroReg, 0);
 #endif // ALPHA_ISA
 
     // check for instruction-count-based events
@@ -644,7 +644,7 @@ BaseSimpleCPU::postExecute()
         t_info.numLoadInsts++;
     }
 
-    if (curStaticInst->isStore()){
+    if (curStaticInst->isStore() || curStaticInst->isAtomic()){
         t_info.numStoreInsts++;
     }
     /* End power model statistics */

@@ -76,6 +76,18 @@ DefaultRename<Impl>::DefaultRename(O3CPU *_cpu, DerivO3CPUParams *params)
 
     // @todo: Make into a parameter.
     skidBufferMax = (decodeToRenameDelay + 1) * params->decodeWidth;
+    for (uint32_t tid = 0; tid < Impl::MaxThreads; tid++) {
+        renameStatus[tid] = Idle;
+        renameMap[tid] = nullptr;
+        instsInProgress[tid] = 0;
+        loadsInProgress[tid] = 0;
+        storesInProgress[tid] = 0;
+        freeEntries[tid] = {0, 0, 0, 0};
+        emptyROB[tid] = true;
+        stalls[tid] = {false, false};
+        serializeInst[tid] = nullptr;
+        serializeOnNextInst[tid] = false;
+    }
 }
 
 template <class Impl>
@@ -184,6 +196,10 @@ DefaultRename<Impl>::regStats()
         .name(name() + ".vec_rename_lookups")
         .desc("Number of vector rename lookups")
         .prereq(vecRenameLookups);
+    vecPredRenameLookups
+        .name(name() + ".vec_pred_rename_lookups")
+        .desc("Number of vector predicate rename lookups")
+        .prereq(vecPredRenameLookups);
 }
 
 template <class Impl>
@@ -236,6 +252,28 @@ void
 DefaultRename<Impl>::startupStage()
 {
     resetStage();
+}
+
+template <class Impl>
+void
+DefaultRename<Impl>::clearStates(ThreadID tid)
+{
+    renameStatus[tid] = Idle;
+
+    freeEntries[tid].iqEntries = iew_ptr->instQueue.numFreeEntries(tid);
+    freeEntries[tid].lqEntries = iew_ptr->ldstQueue.numFreeLoadEntries(tid);
+    freeEntries[tid].sqEntries = iew_ptr->ldstQueue.numFreeStoreEntries(tid);
+    freeEntries[tid].robEntries = commit_ptr->numROBFreeEntries(tid);
+    emptyROB[tid] = true;
+
+    stalls[tid].iew = false;
+    serializeInst[tid] = NULL;
+
+    instsInProgress[tid] = 0;
+    loadsInProgress[tid] = 0;
+    storesInProgress[tid] = 0;
+
+    serializeOnNextInst[tid] = false;
 }
 
 template <class Impl>
@@ -524,8 +562,6 @@ DefaultRename<Impl>::renameInsts(ThreadID tid)
         ++renameRunCycles;
     }
 
-    DynInstPtr inst;
-
     // Will have to do a different calculation for the number of free
     // entries.
     int free_rob_entries = calcFreeROBEntries(tid);
@@ -596,7 +632,7 @@ DefaultRename<Impl>::renameInsts(ThreadID tid)
 
         assert(!insts_to_rename.empty());
 
-        inst = insts_to_rename.front();
+        DynInstPtr inst = insts_to_rename.front();
 
         //For all kind of instructions, check ROB and IQ first
         //For load instruction, check LQ size and take into account the inflight loads
@@ -611,7 +647,7 @@ DefaultRename<Impl>::renameInsts(ThreadID tid)
             }
         }
 
-        if (inst->isStore()) {
+        if (inst->isStore() || inst->isAtomic()) {
             if (calcFreeSQEntries(tid) <= 0) {
                 DPRINTF(Rename, "[tid:%u]: Cannot rename due to no free SQ\n");
                 source = SQ;
@@ -649,6 +685,7 @@ DefaultRename<Impl>::renameInsts(ThreadID tid)
                                        inst->numFPDestRegs(),
                                        inst->numVecDestRegs(),
                                        inst->numVecElemDestRegs(),
+                                       inst->numVecPredDestRegs(),
                                        inst->numCCDestRegs())) {
             DPRINTF(Rename, "Blocking due to lack of free "
                     "physical registers to rename to.\n");
@@ -704,12 +741,12 @@ DefaultRename<Impl>::renameInsts(ThreadID tid)
 
         renameDestRegs(inst, inst->threadNumber);
 
-        if (inst->isLoad()) {
-                loadsInProgress[tid]++;
+        if (inst->isAtomic() || inst->isStore()) {
+            storesInProgress[tid]++;
+        } else if (inst->isLoad()) {
+            loadsInProgress[tid]++;
         }
-        if (inst->isStore()) {
-                storesInProgress[tid]++;
-        }
+
         ++renamed_insts;
         // Notify potential listeners that source and destination registers for
         // this instruction have been renamed.
@@ -787,7 +824,7 @@ DefaultRename<Impl>::sortInsts()
 {
     int insts_from_decode = fromDecode->size;
     for (int i = 0; i < insts_from_decode; ++i) {
-        DynInstPtr inst = fromDecode->insts[i];
+        const DynInstPtr &inst = fromDecode->insts[i];
         insts[inst->threadNumber].push_back(inst);
 #if TRACING_ON
         if (DTRACE(O3PipeView)) {
@@ -917,10 +954,6 @@ DefaultRename<Impl>::doSquash(const InstSeqNum &squashed_seq_num, ThreadID tid)
 
     // After a syscall squashes everything, the history buffer may be empty
     // but the ROB may still be squashing instructions.
-    if (historyBuffer[tid].empty()) {
-        return;
-    }
-
     // Go through the most recent instructions, undoing the mappings
     // they did and freeing up the registers.
     while (!historyBuffer[tid].empty() &&
@@ -955,6 +988,9 @@ DefaultRename<Impl>::doSquash(const InstSeqNum &squashed_seq_num, ThreadID tid)
 
         ++renameUndoneMaps;
     }
+
+    // Check if we need to change vector renaming mode after squashing
+    cpu->switchRenameMode(tid, freeList);
 }
 
 template<class Impl>
@@ -1008,7 +1044,7 @@ DefaultRename<Impl>::removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid)
 
 template <class Impl>
 inline void
-DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
+DefaultRename<Impl>::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 {
     ThreadContext *tc = inst->tcBase();
     RenameMap *map = renameMap[tid];
@@ -1029,7 +1065,11 @@ DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
             fpRenameLookups++;
             break;
           case VecRegClass:
+          case VecElemClass:
             vecRenameLookups++;
+            break;
+          case VecPredRegClass:
+            vecPredRenameLookups++;
             break;
           case CCRegClass:
           case MiscRegClass:
@@ -1068,7 +1108,7 @@ DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
 
 template <class Impl>
 inline void
-DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
+DefaultRename<Impl>::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
 {
     ThreadContext *tc = inst->tcBase();
     RenameMap *map = renameMap[tid];
@@ -1246,7 +1286,7 @@ DefaultRename<Impl>::readFreeEntries(ThreadID tid)
     }
 
     DPRINTF(Rename, "[tid:%i]: Free IQ: %i, Free ROB: %i, "
-                    "Free LQ: %i, Free SQ: %i, FreeRM %i(%i %i %i %i)\n",
+                    "Free LQ: %i, Free SQ: %i, FreeRM %i(%i %i %i %i %i)\n",
             tid,
             freeEntries[tid].iqEntries,
             freeEntries[tid].robEntries,
@@ -1256,6 +1296,7 @@ DefaultRename<Impl>::readFreeEntries(ThreadID tid)
             renameMap[tid]->numFreeIntEntries(),
             renameMap[tid]->numFreeFloatEntries(),
             renameMap[tid]->numFreeVecEntries(),
+            renameMap[tid]->numFreePredEntries(),
             renameMap[tid]->numFreeCCEntries());
 
     DPRINTF(Rename, "[tid:%i]: %i instructions not yet in ROB\n",

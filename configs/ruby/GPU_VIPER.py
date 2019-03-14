@@ -35,8 +35,11 @@ import math
 import m5
 from m5.objects import *
 from m5.defines import buildEnv
+from m5.util import addToPath
 from Ruby import create_topology
 from Ruby import send_evicts
+
+addToPath('../')
 
 from topologies.Cluster import Cluster
 from topologies.Crossbar import Crossbar
@@ -426,7 +429,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         mainCluster = Cluster(intBW=crossbar_bw)
     else:
         mainCluster = Cluster(intBW=8) # 16 GB/s
-    for i in xrange(options.num_dirs):
+    for i in range(options.num_dirs):
 
         dir_cntrl = DirCntrl(noTCCdir = True, TCC_select_num_bits = TCC_bits)
         dir_cntrl.create(options, ruby_system, system)
@@ -464,7 +467,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         cpuCluster = Cluster(extBW = crossbar_bw, intBW = crossbar_bw)
     else:
         cpuCluster = Cluster(extBW = 8, intBW = 8) # 16 GB/s
-    for i in xrange((options.num_cpus + 1) / 2):
+    for i in range((options.num_cpus + 1) // 2):
 
         cp_cntrl = CPCntrl()
         cp_cntrl.create(options, ruby_system, system)
@@ -501,7 +504,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
       gpuCluster = Cluster(extBW = crossbar_bw, intBW = crossbar_bw)
     else:
       gpuCluster = Cluster(extBW = 8, intBW = 8) # 16 GB/s
-    for i in xrange(options.num_compute_units):
+    for i in range(options.num_compute_units):
 
         tcp_cntrl = TCPCntrl(TCC_select_num_bits = TCC_bits,
                              issue_latency = 1,
@@ -540,7 +543,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
 
         gpuCluster.add(tcp_cntrl)
 
-    for i in xrange(options.num_sqc):
+    for i in range(options.num_sqc):
 
         sqc_cntrl = SQCCntrl(TCC_select_num_bits = TCC_bits)
         sqc_cntrl.create(options, ruby_system, system)
@@ -566,7 +569,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         # SQC also in GPU cluster
         gpuCluster.add(sqc_cntrl)
 
-    for i in xrange(options.num_cp):
+    for i in range(options.num_cp):
 
         tcp_ID = options.num_compute_units + i
         sqc_ID = options.num_sqc + i
@@ -620,7 +623,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         # SQC also in GPU cluster
         gpuCluster.add(sqc_cntrl)
 
-    for i in xrange(options.num_tccs):
+    for i in range(options.num_tccs):
 
         tcc_cntrl = TCCCntrl(l2_response_latency = options.TCC_latency)
         tcc_cntrl.create(options, ruby_system, system)

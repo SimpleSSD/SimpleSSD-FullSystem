@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -169,6 +169,9 @@ class DefaultRename
     /** Initializes variables for the stage. */
     void startupStage();
 
+    /** Clear all thread-specific states */
+    void clearStates(ThreadID tid);
+
     /** Sets pointer to list of active threads. */
     void setActiveThreads(std::list<ThreadID> *at_ptr);
 
@@ -252,10 +255,10 @@ class DefaultRename
     void removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid);
 
     /** Renames the source registers of an instruction. */
-    inline void renameSrcRegs(DynInstPtr &inst, ThreadID tid);
+    inline void renameSrcRegs(const DynInstPtr &inst, ThreadID tid);
 
     /** Renames the destination registers of an instruction. */
-    inline void renameDestRegs(DynInstPtr &inst, ThreadID tid);
+    inline void renameDestRegs(const DynInstPtr &inst, ThreadID tid);
 
     /** Calculates the number of free ROB entries for a specific thread. */
     inline int calcFreeROBEntries(ThreadID tid);
@@ -514,6 +517,7 @@ class DefaultRename
     Stats::Scalar intRenameLookups;
     Stats::Scalar fpRenameLookups;
     Stats::Scalar vecRenameLookups;
+    Stats::Scalar vecPredRenameLookups;
     /** Stat for total number of committed renaming mappings. */
     Stats::Scalar renameCommittedMaps;
     /** Stat for total number of mappings that were undone due to a squash. */

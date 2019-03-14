@@ -222,7 +222,7 @@ class Decoder
   protected:
     /// Caching for decoded instruction objects.
 
-    typedef MiscReg CacheKey;
+    typedef RegVal CacheKey;
 
     typedef DecodeCache::AddrMap<Decoder::InstBytes> DecodePages;
     DecodePages *decodePages;
@@ -239,7 +239,7 @@ class Decoder
         outOfBytes(true), instDone(false),
         state(ResetState)
     {
-        memset(&emi, 0, sizeof(emi));
+        emi.reset();
         mode = LongMode;
         submode = SixtyFourBitMode;
         emi.mode.mode = mode;

@@ -88,7 +88,7 @@ zeroRegisters(CPU *cpu)
     // (no longer very clean due to the change in setIntReg() in the
     // cpu model.  Consider changing later.)
     cpu->thread->setIntReg(ZeroReg, 0);
-    cpu->thread->setFloatReg(ZeroReg, 0.0);
+    cpu->thread->setFloatReg(ZeroReg, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -107,7 +107,7 @@ initIPRs(ThreadContext *tc, int cpuId)
     tc->setMiscRegNoEffect(IPR_PALtemp16, cpuId);
 }
 
-MiscReg
+RegVal
 ISA::readIpr(int idx, ThreadContext *tc)
 {
     uint64_t retval = 0;        // return value, default 0

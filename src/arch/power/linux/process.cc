@@ -69,8 +69,8 @@ SyscallDesc PowerLinuxProcess::syscallDescs[] = {
     /*  0 */ SyscallDesc("syscall", unimplementedFunc),
     /*  1 */ SyscallDesc("exit", exitFunc),
     /*  2 */ SyscallDesc("fork", unimplementedFunc),
-    /*  3 */ SyscallDesc("read", readFunc),
-    /*  4 */ SyscallDesc("write", writeFunc),
+    /*  3 */ SyscallDesc("read", readFunc<PowerLinux>),
+    /*  4 */ SyscallDesc("write", writeFunc<PowerLinux>),
     /*  5 */ SyscallDesc("open", openFunc<PowerLinux>),
     /*  6 */ SyscallDesc("close", closeFunc),
     /*  7 */ SyscallDesc("waitpid", unimplementedFunc), //???
@@ -437,7 +437,7 @@ PowerLinuxProcess::initState()
     PowerProcess::initState();
 }
 
-PowerISA::IntReg
+RegVal
 PowerLinuxProcess::getSyscallArg(ThreadContext *tc, int &i)
 {
     // Linux apparently allows more parameter than the ABI says it should.
@@ -447,7 +447,7 @@ PowerLinuxProcess::getSyscallArg(ThreadContext *tc, int &i)
 }
 
 void
-PowerLinuxProcess::setSyscallArg(ThreadContext *tc, int i, PowerISA::IntReg val)
+PowerLinuxProcess::setSyscallArg(ThreadContext *tc, int i, RegVal val)
 {
     // Linux apparently allows more parameter than the ABI says it should.
     // This limit may need to be increased even further.

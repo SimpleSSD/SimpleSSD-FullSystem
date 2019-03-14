@@ -103,14 +103,14 @@ class Cache : public BaseCache
 
     void doWritebacksAtomic(PacketList& writebacks) override;
 
-    void serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
-                            PacketList& writebacks) override;
+    void serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
+                            CacheBlk *blk) override;
 
     void recvTimingSnoopReq(PacketPtr pkt) override;
 
     void recvTimingSnoopResp(PacketPtr pkt) override;
 
-    Cycles handleAtomicReqMiss(PacketPtr pkt, CacheBlk *blk,
+    Cycles handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
                                PacketList &writebacks) override;
 
     Tick recvAtomic(PacketPtr pkt) override;
@@ -141,8 +141,6 @@ class Cache : public BaseCache
 
     M5_NODISCARD PacketPtr evictBlock(CacheBlk *blk) override;
 
-    void evictBlock(CacheBlk *blk, PacketList &writebacks) override;
-
     /**
      * Create a CleanEvict request for the given block.
      *
@@ -152,7 +150,8 @@ class Cache : public BaseCache
     PacketPtr cleanEvictBlk(CacheBlk *blk);
 
     PacketPtr createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
-                               bool needsWritable) const override;
+                               bool needs_writable,
+                               bool is_whole_line_write) const override;
 
     /**
      * Send up a snoop request and find cached copies. If cached copies are

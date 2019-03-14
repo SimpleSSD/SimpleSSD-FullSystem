@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2014 ARM Limited
+# Copyright (c) 2012-2014,2018 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -46,12 +46,12 @@ from m5.defines import buildEnv
 from m5.params import *
 from m5.proxy import *
 from m5.SimObject import SimObject
-from BaseCPU import BaseCPU
-from DummyChecker import DummyChecker
-from BranchPredictor import *
-from TimingExpr import TimingExpr
+from m5.objects.BaseCPU import BaseCPU
+from m5.objects.DummyChecker import DummyChecker
+from m5.objects.BranchPredictor import *
+from m5.objects.TimingExpr import TimingExpr
 
-from FuncUnit import OpClass
+from m5.objects.FuncUnit import OpClass
 
 class MinorOpClass(SimObject):
     """Boxing of OpClass to get around build problems and provide a hook for
@@ -102,7 +102,7 @@ def minorMakeOpClassSet(op_classes):
     def boxOpClass(op_class):
         return MinorOpClass(opClass=op_class)
 
-    return MinorOpClassSet(opClasses=map(boxOpClass, op_classes))
+    return MinorOpClassSet(opClasses=[ boxOpClass(o) for o in op_classes ])
 
 class MinorFU(SimObject):
     type = 'MinorFU'
@@ -150,7 +150,9 @@ class MinorDefaultFloatSimdFU(MinorFU):
         'SimdMisc', 'SimdMult', 'SimdMultAcc', 'SimdShift', 'SimdShiftAcc',
         'SimdSqrt', 'SimdFloatAdd', 'SimdFloatAlu', 'SimdFloatCmp',
         'SimdFloatCvt', 'SimdFloatDiv', 'SimdFloatMisc', 'SimdFloatMult',
-        'SimdFloatMultAcc', 'SimdFloatSqrt'])
+        'SimdFloatMultAcc', 'SimdFloatSqrt', 'SimdAes', 'SimdAesMix',
+        'SimdSha1Hash', 'SimdSha1Hash2', 'SimdSha256Hash',
+        'SimdSha256Hash2', 'SimdShaSigma2', 'SimdShaSigma3'])
     timings = [MinorFUTiming(description='FloatSimd',
         srcRegsRelativeLats=[2])]
     opLat = 6

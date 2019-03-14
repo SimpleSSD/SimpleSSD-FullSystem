@@ -1,4 +1,4 @@
-# Copyright (c) 2012, 2017 ARM Limited
+# Copyright (c) 2012, 2017-2018 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -59,6 +59,19 @@ def is_cpu_class(cls):
     except (TypeError, AttributeError):
         return False
 
+def _cpu_subclass_tester(name):
+    cpu_class = getattr(m5.objects, name, None)
+
+    def tester(cls):
+        return cpu_class is not None and cls is not None and \
+            issubclass(cls, cpu_class)
+
+    return tester
+
+is_kvm_cpu = _cpu_subclass_tester("BaseKvmCPU")
+is_atomic_cpu = _cpu_subclass_tester("AtomicSimpleCPU")
+is_noncaching_cpu = _cpu_subclass_tester("NonCachingSimpleCPU")
+
 def get(name):
     """Get a CPU class from a user provided class name or alias."""
 
@@ -86,7 +99,7 @@ def print_cpu_list():
 
 def cpu_names():
     """Return a list of valid CPU names."""
-    return _cpu_classes.keys()
+    return list(_cpu_classes.keys())
 
 def config_etrace(cpu_cls, cpu_list, options):
     if issubclass(cpu_cls, m5.objects.DerivO3CPU):

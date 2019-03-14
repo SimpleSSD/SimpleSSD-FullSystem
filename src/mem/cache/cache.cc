@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2018 ARM Limited
+ * Copyright (c) 2010-2019 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -64,7 +64,7 @@
 #include "debug/CacheTags.hh"
 #include "debug/CacheVerbose.hh"
 #include "enums/Clusivity.hh"
-#include "mem/cache/blk.hh"
+#include "mem/cache/cache_blk.hh"
 #include "mem/cache/mshr.hh"
 #include "mem/cache/tags/base.hh"
 #include "mem/cache/write_queue_entry.hh"
@@ -177,7 +177,7 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         // flush and invalidate any existing block
         CacheBlk *old_blk(tags->findBlock(pkt->getAddr(), pkt->isSecure()));
         if (old_blk && old_blk->isValid()) {
-            evictBlock(old_blk, writebacks);
+            BaseCache::evictBlock(old_blk, writebacks);
         }
 
         blk = nullptr;
@@ -377,10 +377,10 @@ Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
 
         if (!mshr) {
             // copy the request and create a new SoftPFReq packet
-            RequestPtr req = new Request(pkt->req->getPaddr(),
-                                         pkt->req->getSize(),
-                                         pkt->req->getFlags(),
-                                         pkt->req->masterId());
+            RequestPtr req = std::make_shared<Request>(pkt->req->getPaddr(),
+                                                       pkt->req->getSize(),
+                                                       pkt->req->getFlags(),
+                                                       pkt->req->masterId());
             pf = new Packet(req, pkt->cmd);
             pf->allocate();
             assert(pf->getAddr() == pkt->getAddr());
@@ -391,7 +391,7 @@ Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
 
         // request_time is used here, taking into account lat and the delay
         // charged if the packet comes from the xbar.
-        cpuSidePort.schedTimingResp(pkt, request_time, true);
+        cpuSidePort.schedTimingResp(pkt, request_time);
 
         // If an outstanding request is in progress (we found an
         // MSHR) this is set to null
@@ -477,7 +477,8 @@ Cache::recvTimingReq(PacketPtr pkt)
 
 PacketPtr
 Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
-                        bool needsWritable) const
+                        bool needsWritable,
+                        bool is_whole_line_write) const
 {
     // should never see evictions here
     assert(!cpu_pkt->isEviction());
@@ -500,7 +501,8 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
     // write miss on a shared owned block will generate a ReadExcl,
     // which will clobber the owned copy.
     const bool useUpgrades = true;
-    if (cpu_pkt->cmd == MemCmd::WriteLineReq) {
+    assert(cpu_pkt->cmd != MemCmd::WriteLineReq || is_whole_line_write);
+    if (is_whole_line_write) {
         assert(!blkValid || !blk->isWritable());
         // forward as invalidate to all other caches, this gives us
         // the line in Exclusive state, and invalidates all other
@@ -560,7 +562,7 @@ Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
 
 
 Cycles
-Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *blk,
+Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *&blk,
                            PacketList &writebacks)
 {
     // deal with the packets that go through the write path of
@@ -580,7 +582,8 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *blk,
 
     // only misses left
 
-    PacketPtr bus_pkt = createMissPacket(pkt, blk, pkt->needsWritable());
+    PacketPtr bus_pkt = createMissPacket(pkt, blk, pkt->needsWritable(),
+                                         pkt->isWholeLineWrite(blkSize));
 
     bool is_forward = (bus_pkt == nullptr);
 
@@ -615,13 +618,14 @@ Cache::handleAtomicReqMiss(PacketPtr pkt, CacheBlk *blk,
             if (bus_pkt->isError()) {
                 pkt->makeAtomicResponse();
                 pkt->copyError(bus_pkt);
-            } else if (pkt->cmd == MemCmd::WriteLineReq) {
+            } else if (pkt->isWholeLineWrite(blkSize)) {
                 // note the use of pkt, not bus_pkt here.
 
                 // write-line request to the cache that promoted
                 // the write to a whole line
-                blk = handleFill(pkt, blk, writebacks,
-                                 allocOnFill(pkt->cmd));
+                const bool allocate = allocOnFill(pkt->cmd) &&
+                    (!writeAllocator || writeAllocator->allocate());
+                blk = handleFill(bus_pkt, blk, writebacks, allocate);
                 assert(blk != NULL);
                 is_invalidate = false;
                 satisfyRequest(pkt, blk);
@@ -654,6 +658,21 @@ Cache::recvAtomic(PacketPtr pkt)
 {
     promoteWholeLineWrites(pkt);
 
+    // follow the same flow as in recvTimingReq, and check if a cache
+    // above us is responding
+    if (pkt->cacheResponding()) {
+        assert(!pkt->req->isCacheInvalidate());
+        DPRINTF(Cache, "Cache above responding to %s: not responding\n",
+                pkt->print());
+
+        // if a cache is responding, and it had the line in Owned
+        // rather than Modified state, we need to invalidate any
+        // copies that are not on the same path to memory
+        assert(pkt->needsWritable() && !pkt->responderHadWritable());
+
+        return memSidePort.sendAtomic(pkt);
+    }
+
     return BaseCache::recvAtomic(pkt);
 }
 
@@ -666,19 +685,17 @@ Cache::recvAtomic(PacketPtr pkt)
 
 
 void
-Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
-                          PacketList &writebacks)
+Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk)
 {
     MSHR::Target *initial_tgt = mshr->getTarget();
     // First offset for critical word first calculations
     const int initial_offset = initial_tgt->pkt->getOffset(blkSize);
 
     const bool is_error = pkt->isError();
-    bool is_fill = !mshr->isForward &&
-        (pkt->isRead() || pkt->cmd == MemCmd::UpgradeResp);
     // allow invalidation responses originating from write-line
     // requests to be discarded
-    bool is_invalidate = pkt->isInvalidate();
+    bool is_invalidate = pkt->isInvalidate() &&
+        !mshr->wasWholeLineWrite;
 
     MSHR::TargetList targets = mshr->extractServiceableTargets(pkt);
     for (auto &target: targets) {
@@ -696,7 +713,6 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
                 // immediately with dummy data so the core would be able to
                 // retire it. This request completes right here, so we
                 // deallocate it.
-                delete tgt_pkt->req;
                 delete tgt_pkt;
                 break; // skip response
             }
@@ -709,21 +725,11 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
             // from above.
             if (tgt_pkt->cmd == MemCmd::WriteLineReq) {
                 assert(!is_error);
-                // we got the block in a writable state, so promote
-                // any deferred targets if possible
-                mshr->promoteWritable();
-                // NB: we use the original packet here and not the response!
-                blk = handleFill(tgt_pkt, blk, writebacks,
-                                 targets.allocOnFill);
                 assert(blk);
-
-                // treat as a fill, and discard the invalidation
-                // response
-                is_fill = true;
-                is_invalidate = false;
+                assert(blk->isWritable());
             }
 
-            if (is_fill) {
+            if (blk && blk->isValid() && !mshr->isForward) {
                 satisfyRequest(tgt_pkt, blk, true, mshr->hasPostDowngrade());
 
                 // How many bytes past the first request is this one
@@ -780,6 +786,11 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
 
                     tgt_pkt->setData(pkt->getConstPtr<uint8_t>());
                 }
+
+                // this response did not allocate here and therefore
+                // it was not consumed, make sure that any flags are
+                // carried over to cache above
+                tgt_pkt->copyResponderFlags(pkt);
             }
             tgt_pkt->makeTimingResponse();
             // if this packet is an error copy that to the new packet
@@ -796,14 +807,13 @@ Cache::serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt, CacheBlk *blk,
             }
             // Reset the bus additional time as it is now accounted for
             tgt_pkt->headerDelay = tgt_pkt->payloadDelay = 0;
-            cpuSidePort.schedTimingResp(tgt_pkt, completion_time, true);
+            cpuSidePort.schedTimingResp(tgt_pkt, completion_time);
             break;
 
           case MSHR::Target::FromPrefetcher:
             assert(tgt_pkt->cmd == MemCmd::HardPFReq);
             if (blk)
                 blk->status |= BlkHWPrefetched;
-            delete tgt_pkt->req;
             delete tgt_pkt;
             break;
 
@@ -857,24 +867,16 @@ Cache::evictBlock(CacheBlk *blk)
     return pkt;
 }
 
-void
-Cache::evictBlock(CacheBlk *blk, PacketList &writebacks)
-{
-    PacketPtr pkt = evictBlock(blk);
-    if (pkt) {
-        writebacks.push_back(pkt);
-    }
-}
-
 PacketPtr
 Cache::cleanEvictBlk(CacheBlk *blk)
 {
     assert(!writebackClean);
     assert(blk && blk->isValid() && !blk->isDirty());
+
     // Creating a zero sized write, a message to the snoop filter
-    Request *req =
-        new Request(regenerateBlkAddr(blk), blkSize, 0,
-                    Request::wbMasterId);
+    RequestPtr req = std::make_shared<Request>(
+        regenerateBlkAddr(blk), blkSize, 0, Request::wbMasterId);
+
     if (blk->isSecure())
         req->setFlags(Request::SECURE);
 
@@ -935,7 +937,7 @@ Cache::doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
     pkt->headerDelay = pkt->payloadDelay = 0;
     DPRINTF(CacheVerbose, "%s: created response: %s tick: %lu\n", __func__,
             pkt->print(), forward_time);
-    memSidePort.schedTimingSnoopResp(pkt, forward_time, true);
+    memSidePort.schedTimingSnoopResp(pkt, forward_time);
 }
 
 uint32_t
@@ -968,7 +970,6 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
         // first propagate snoop upward to see if anyone above us wants to
         // handle it.  save & restore packet src since it will get
         // rewritten to be relative to cpu-side bus (if any)
-        bool alreadyResponded = pkt->cacheResponding();
         if (is_timing) {
             // copy the packet so that we can clear any flags before
             // forwarding it upwards, we also allocate data (passing
@@ -986,16 +987,6 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
             // cache
             snoop_delay += snoopPkt.headerDelay;
 
-            if (snoopPkt.cacheResponding()) {
-                // cache-to-cache response from some upper cache
-                assert(!alreadyResponded);
-                pkt->setCacheResponding();
-            }
-            // upstream cache has the block, or has an outstanding
-            // MSHR, pass the flag on
-            if (snoopPkt.hasSharers()) {
-                pkt->setHasSharers();
-            }
             // If this request is a prefetch or clean evict and an upper level
             // signals block present, make sure to propagate the block
             // presence to the requester.
@@ -1007,9 +998,14 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
             if (snoopPkt.satisfied()) {
                 pkt->setSatisfied();
             }
+
+            // Copy over flags from the snoop response to make sure we
+            // inform the final destination
+            pkt->copyResponderFlags(&snoopPkt);
         } else {
+            bool already_responded = pkt->cacheResponding();
             cpuSidePort.sendAtomicSnoop(pkt);
-            if (!alreadyResponded && pkt->cacheResponding()) {
+            if (!already_responded && pkt->cacheResponding()) {
                 // cache-to-cache response from some upper cache:
                 // forward response to original requester
                 assert(pkt->isResponse());
@@ -1137,15 +1133,6 @@ Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
 
     if (!respond && is_deferred) {
         assert(pkt->needsResponse());
-
-        // if we copied the deferred packet with the intention to
-        // respond, but are not responding, then a cache above us must
-        // be, and we can use this as the indication of whether this
-        // is a packet where we created a copy of the request or not
-        if (!pkt->cacheResponding()) {
-            delete pkt->req;
-        }
-
         delete pkt;
     }
 
@@ -1395,7 +1382,6 @@ Cache::sendMSHRQueuePacket(MSHR* mshr)
             }
 
             // given that no response is expected, delete Request and Packet
-            delete tgt_pkt->req;
             delete tgt_pkt;
 
             return false;

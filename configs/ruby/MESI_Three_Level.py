@@ -83,8 +83,8 @@ def create_system(options, full_system, system, dma_ports, bootmem,
     # Must create the individual controllers before the network to ensure the
     # controller constructors are called before the network constructor
     #
-    for i in xrange(options.num_clusters):
-        for j in xrange(num_cpus_per_cluster):
+    for i in range(options.num_clusters):
+        for j in range(num_cpus_per_cluster):
             #
             # First create the Ruby objects associated with this cpu
             #
@@ -164,7 +164,7 @@ def create_system(options, full_system, system, dma_ports, bootmem,
             l1_cntrl.responseFromL2.slave = ruby_system.network.master
 
 
-        for j in xrange(num_l2caches_per_cluster):
+        for j in range(num_l2caches_per_cluster):
             l2_cache = L2Cache(size = options.l2_size,
                                assoc = options.l2_assoc,
                                start_index_bit = l2_index_start)
@@ -201,7 +201,7 @@ def create_system(options, full_system, system, dma_ports, bootmem,
             clk_domain = ruby_system.clk_domain, clk_divider = 3)
 
     mem_dir_cntrl_nodes, rom_dir_cntrl_node = create_directories(
-        options, system.mem_ranges, bootmem, ruby_system, system)
+        options, bootmem, ruby_system, system)
     dir_cntrl_nodes = mem_dir_cntrl_nodes[:]
     if rom_dir_cntrl_node is not None:
         dir_cntrl_nodes.append(rom_dir_cntrl_node)

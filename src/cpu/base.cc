@@ -318,7 +318,8 @@ BaseCPU::mwaitAtomic(ThreadID tid, ThreadContext *tc, BaseTLB *dtb)
     assert(tid < numThreads);
     AddressMonitor &monitor = addressMonitor[tid];
 
-    Request req;
+    RequestPtr req = std::make_shared<Request>();
+
     Addr addr = monitor.vAddr;
     int block_size = cacheLineSize();
     uint64_t mask = ~((uint64_t)(block_size - 1));
@@ -330,13 +331,13 @@ BaseCPU::mwaitAtomic(ThreadID tid, ThreadContext *tc, BaseTLB *dtb)
     if (secondAddr > addr)
         size = secondAddr - addr;
 
-    req.setVirt(0, addr, size, 0x0, dataMasterId(), tc->instAddr());
+    req->setVirt(0, addr, size, 0x0, dataMasterId(), tc->instAddr());
 
     // translate to physical address
-    Fault fault = dtb->translateAtomic(&req, tc, BaseTLB::Read);
+    Fault fault = dtb->translateAtomic(req, tc, BaseTLB::Read);
     assert(fault == NoFault);
 
-    monitor.pAddr = req.getPaddr() & mask;
+    monitor.pAddr = req->getPaddr() & mask;
     monitor.waiting = true;
 
     DPRINTF(Mwait,"[tid:%d] mwait called (vAddr=0x%lx, line's paddr=0x%lx)\n",
@@ -408,7 +409,7 @@ BaseCPU::probeInstCommit(const StaticInstPtr &inst)
     if (inst->isLoad())
         ppRetiredLoads->notify(1);
 
-    if (inst->isStore())
+    if (inst->isStore() || inst->isAtomic())
         ppRetiredStores->notify(1);
 
     if (inst->isControl())
@@ -620,10 +621,14 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
             ThreadContext::compare(oldTC, newTC);
         */
 
-        BaseMasterPort *old_itb_port = oldTC->getITBPtr()->getMasterPort();
-        BaseMasterPort *old_dtb_port = oldTC->getDTBPtr()->getMasterPort();
-        BaseMasterPort *new_itb_port = newTC->getITBPtr()->getMasterPort();
-        BaseMasterPort *new_dtb_port = newTC->getDTBPtr()->getMasterPort();
+        BaseMasterPort *old_itb_port =
+            oldTC->getITBPtr()->getTableWalkerMasterPort();
+        BaseMasterPort *old_dtb_port =
+            oldTC->getDTBPtr()->getTableWalkerMasterPort();
+        BaseMasterPort *new_itb_port =
+            newTC->getITBPtr()->getTableWalkerMasterPort();
+        BaseMasterPort *new_dtb_port =
+            newTC->getDTBPtr()->getTableWalkerMasterPort();
 
         // Move over any table walker ports if they exist
         if (new_itb_port) {
@@ -651,13 +656,13 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
         CheckerCPU *newChecker = newTC->getCheckerCpuPtr();
         if (oldChecker && newChecker) {
             BaseMasterPort *old_checker_itb_port =
-                oldChecker->getITBPtr()->getMasterPort();
+                oldChecker->getITBPtr()->getTableWalkerMasterPort();
             BaseMasterPort *old_checker_dtb_port =
-                oldChecker->getDTBPtr()->getMasterPort();
+                oldChecker->getDTBPtr()->getTableWalkerMasterPort();
             BaseMasterPort *new_checker_itb_port =
-                newChecker->getITBPtr()->getMasterPort();
+                newChecker->getITBPtr()->getTableWalkerMasterPort();
             BaseMasterPort *new_checker_dtb_port =
-                newChecker->getDTBPtr()->getMasterPort();
+                newChecker->getDTBPtr()->getTableWalkerMasterPort();
 
             newChecker->getITBPtr()->takeOverFrom(oldChecker->getITBPtr());
             newChecker->getDTBPtr()->takeOverFrom(oldChecker->getDTBPtr());

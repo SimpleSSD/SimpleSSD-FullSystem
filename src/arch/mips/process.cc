@@ -179,9 +179,9 @@ MipsProcess::argsInit(int pageSize)
     // Copy the aux vector
     for (typename vector<auxv_t>::size_type x = 0; x < auxv.size(); x++) {
         initVirtMem.writeBlob(auxv_array_base + x * 2 * intSize,
-                (uint8_t*)&(auxv[x].a_type), intSize);
+                (uint8_t*)&(auxv[x].getAuxType()), intSize);
         initVirtMem.writeBlob(auxv_array_base + (x * 2 + 1) * intSize,
-                (uint8_t*)&(auxv[x].a_val), intSize);
+                (uint8_t*)&(auxv[x].getAuxVal()), intSize);
     }
 
     // Write out the terminating zeroed auxilliary vector
@@ -201,7 +201,7 @@ MipsProcess::argsInit(int pageSize)
 }
 
 
-MipsISA::IntReg
+RegVal
 MipsProcess::getSyscallArg(ThreadContext *tc, int &i)
 {
     assert(i < 6);
@@ -209,7 +209,7 @@ MipsProcess::getSyscallArg(ThreadContext *tc, int &i)
 }
 
 void
-MipsProcess::setSyscallArg(ThreadContext *tc, int i, MipsISA::IntReg val)
+MipsProcess::setSyscallArg(ThreadContext *tc, int i, RegVal val)
 {
     assert(i < 6);
     tc->setIntReg(FirstArgumentReg + i, val);
@@ -224,7 +224,7 @@ MipsProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
         tc->setIntReg(ReturnValueReg, sysret.returnValue());
     } else {
         // got an error, return details
-        tc->setIntReg(SyscallSuccessReg, (IntReg) -1);
+        tc->setIntReg(SyscallSuccessReg, (uint32_t)(-1));
         tc->setIntReg(ReturnValueReg, sysret.errnoValue());
     }
 }

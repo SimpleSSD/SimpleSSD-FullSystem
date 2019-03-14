@@ -57,6 +57,9 @@
 #
 #####################################################################
 
+from __future__ import print_function
+from __future__ import absolute_import
+
 import m5, os, re
 from m5.SimObject import isRoot, isSimObjectVector
 from m5.params import PortRef, isNullPointer
@@ -67,7 +70,7 @@ except:
     pydot = False
 
 def simnode_children(simNode):
-    for child in simNode._children.itervalues():
+    for child in simNode._children.values():
         if isNullPointer(child):
             continue
         if isSimObjectVector(child):

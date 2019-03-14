@@ -33,30 +33,9 @@
 
 #include <memory>
 
+#include "mem/cache/replacement_policies/replaceable_entry.hh"
 #include "params/BaseReplacementPolicy.hh"
 #include "sim/sim_object.hh"
-
-/**
- * The replacement data needed by the replacement policy.
- * Each replacement policy should have its own replacement data.
- */
-struct ReplacementData {};
-
-/**
- * A replaceable entry is used by any table-like structure that needs to
- * implement replacement functionality. It provides the replacement data
- * pointer instantiated and needed by the replacement policy used.
- * @sa Replacement Policies
- */
-class ReplaceableEntry
-{
-  public:
-    /**
-     * Replacement data associated to this entry.
-     * It is instantiated by the replacement policy.
-     */
-    std::shared_ptr<ReplacementData> replacementData;
-};
 
 /**
  * Replacement candidates as chosen by the indexing policy.

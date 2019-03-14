@@ -78,7 +78,9 @@
 
 #endif
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #if (NO_STATFS == 0)
 #include <sys/statfs.h>
@@ -86,6 +88,7 @@
 #include <sys/mount.h>
 #endif
 #include <sys/time.h>
+#include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -112,6 +115,10 @@
 #include "sim/syscall_desc.hh"
 #include "sim/syscall_emul_buf.hh"
 #include "sim/syscall_return.hh"
+
+#if defined(__APPLE__) && defined(__MACH__) && !defined(CMSG_ALIGN)
+#define CMSG_ALIGN(len) (((len) + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1))
+#endif
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -161,14 +168,6 @@ SyscallReturn brkFunc(SyscallDesc *desc, int num,
 SyscallReturn closeFunc(SyscallDesc *desc, int num,
                         Process *p, ThreadContext *tc);
 
-// Target read() handler.
-SyscallReturn readFunc(SyscallDesc *desc, int num,
-                       Process *p, ThreadContext *tc);
-
-/// Target write() handler.
-SyscallReturn writeFunc(SyscallDesc *desc, int num,
-                        Process *p, ThreadContext *tc);
-
 /// Target lseek() handler.
 SyscallReturn lseekFunc(SyscallDesc *desc, int num,
                         Process *p, ThreadContext *tc);
@@ -180,6 +179,10 @@ SyscallReturn _llseekFunc(SyscallDesc *desc, int num,
 /// Target munmap() handler.
 SyscallReturn munmapFunc(SyscallDesc *desc, int num,
                          Process *p, ThreadContext *tc);
+
+/// Target shutdown() handler.
+SyscallReturn shutdownFunc(SyscallDesc *desc, int num,
+                           Process *p, ThreadContext *tc);
 
 /// Target gethostname() handler.
 SyscallReturn gethostnameFunc(SyscallDesc *desc, int num,
@@ -203,8 +206,28 @@ SyscallReturn unlinkHelper(SyscallDesc *desc, int num,
 SyscallReturn unlinkFunc(SyscallDesc *desc, int num,
                          Process *p, ThreadContext *tc);
 
+/// Target link() handler
+SyscallReturn linkFunc(SyscallDesc *desc, int num, Process *p,
+                       ThreadContext *tc);
+
+/// Target symlink() handler.
+SyscallReturn symlinkFunc(SyscallDesc *desc, int num, Process *p,
+                          ThreadContext *tc);
+
 /// Target mkdir() handler.
 SyscallReturn mkdirFunc(SyscallDesc *desc, int num,
+                        Process *p, ThreadContext *tc);
+
+/// Target mknod() handler.
+SyscallReturn mknodFunc(SyscallDesc *desc, int num,
+                        Process *p, ThreadContext *tc);
+
+/// Target chdir() handler.
+SyscallReturn chdirFunc(SyscallDesc *desc, int num,
+                        Process *p, ThreadContext *tc);
+
+// Target rmdir() handler.
+SyscallReturn rmdirFunc(SyscallDesc *desc, int num,
                         Process *p, ThreadContext *tc);
 
 /// Target rename() handler.
@@ -283,7 +306,51 @@ SyscallReturn pipeImpl(SyscallDesc *desc, int num, Process *p,
 SyscallReturn getpidFunc(SyscallDesc *desc, int num,
                          Process *p, ThreadContext *tc);
 
-/// Target getuid() handler.
+// Target getpeername() handler.
+SyscallReturn getpeernameFunc(SyscallDesc *desc, int num,
+                              Process *p, ThreadContext *tc);
+
+// Target bind() handler.
+SyscallReturn bindFunc(SyscallDesc *desc, int num,
+                       Process *p, ThreadContext *tc);
+
+// Target listen() handler.
+SyscallReturn listenFunc(SyscallDesc *desc, int num,
+                         Process *p, ThreadContext *tc);
+
+// Target connect() handler.
+SyscallReturn connectFunc(SyscallDesc *desc, int num,
+                          Process *p, ThreadContext *tc);
+
+#if defined(SYS_getdents)
+// Target getdents() handler.
+SyscallReturn getdentsFunc(SyscallDesc *desc, int num,
+                           Process *p, ThreadContext *tc);
+#endif
+
+#if defined(SYS_getdents64)
+// Target getdents() handler.
+SyscallReturn getdents64Func(SyscallDesc *desc, int num,
+                           Process *p, ThreadContext *tc);
+#endif
+
+// Target sendto() handler.
+SyscallReturn sendtoFunc(SyscallDesc *desc, int num,
+                         Process *p, ThreadContext *tc);
+
+// Target recvfrom() handler.
+SyscallReturn recvfromFunc(SyscallDesc *desc, int num,
+                           Process *p, ThreadContext *tc);
+
+// Target recvmsg() handler.
+SyscallReturn recvmsgFunc(SyscallDesc *desc, int num,
+                          Process *p, ThreadContext *tc);
+
+// Target sendmsg() handler.
+SyscallReturn sendmsgFunc(SyscallDesc *desc, int num,
+                          Process *p, ThreadContext *tc);
+
+// Target getuid() handler.
 SyscallReturn getuidFunc(SyscallDesc *desc, int num,
                          Process *p, ThreadContext *tc);
 
@@ -310,6 +377,18 @@ SyscallReturn accessFunc(SyscallDesc *desc, int num,
                          Process *p, ThreadContext *tc,
                          int index);
 
+// Target getsockopt() handler.
+SyscallReturn getsockoptFunc(SyscallDesc *desc, int num,
+                             Process *p, ThreadContext *tc);
+
+// Target setsockopt() handler.
+SyscallReturn setsockoptFunc(SyscallDesc *desc, int num,
+                             Process *p, ThreadContext *tc);
+
+// Target getsockname() handler.
+SyscallReturn getsocknameFunc(SyscallDesc *desc, int num,
+                              Process *p, ThreadContext *tc);
+
 /// Futex system call
 /// Implemented by Daniel Sanchez
 /// Used by printf's in multi-threaded apps
@@ -324,16 +403,20 @@ futexFunc(SyscallDesc *desc, int callnum, Process *process,
     Addr uaddr = process->getSyscallArg(tc, index);
     int op = process->getSyscallArg(tc, index);
     int val = process->getSyscallArg(tc, index);
+    int timeout M5_VAR_USED = process->getSyscallArg(tc, index);
+    Addr uaddr2 M5_VAR_USED = process->getSyscallArg(tc, index);
+    int val3 = process->getSyscallArg(tc, index);
 
     /*
      * Unsupported option that does not affect the correctness of the
      * application. This is a performance optimization utilized by Linux.
      */
     op &= ~OS::TGT_FUTEX_PRIVATE_FLAG;
+    op &= ~OS::TGT_FUTEX_CLOCK_REALTIME_FLAG;
 
     FutexMap &futex_map = tc->getSystemPtr()->futexMap;
 
-    if (OS::TGT_FUTEX_WAIT == op) {
+    if (OS::TGT_FUTEX_WAIT == op || OS::TGT_FUTEX_WAIT_BITSET == op) {
         // Ensure futex system call accessed atomically.
         BufferArg buf(uaddr, sizeof(int));
         buf.copyIn(tc->getMemProxy());
@@ -347,13 +430,103 @@ futexFunc(SyscallDesc *desc, int callnum, Process *process,
         if (val != mem_val)
             return -OS::TGT_EWOULDBLOCK;
 
-        futex_map.suspend(uaddr, process->tgid(), tc);
+        if (OS::TGT_FUTEX_WAIT) {
+            futex_map.suspend(uaddr, process->tgid(), tc);
+        } else {
+            futex_map.suspend_bitset(uaddr, process->tgid(), tc, val3);
+        }
 
         return 0;
     } else if (OS::TGT_FUTEX_WAKE == op) {
         return futex_map.wakeup(uaddr, process->tgid(), val);
-    }
+    } else if (OS::TGT_FUTEX_WAKE_BITSET == op) {
+        return futex_map.wakeup_bitset(uaddr, process->tgid(), val3);
+    } else if (OS::TGT_FUTEX_REQUEUE == op ||
+               OS::TGT_FUTEX_CMP_REQUEUE == op) {
 
+        // Ensure futex system call accessed atomically.
+        BufferArg buf(uaddr, sizeof(int));
+        buf.copyIn(tc->getMemProxy());
+        int mem_val = *(int*)buf.bufferPtr();
+        /*
+         * For CMP_REQUEUE, the whole operation is only started only if
+         * val3 is still the value of the futex pointed to by uaddr.
+         */
+        if (OS::TGT_FUTEX_CMP_REQUEUE && val3 != mem_val)
+            return -OS::TGT_EWOULDBLOCK;
+        return futex_map.requeue(uaddr, process->tgid(), val, timeout, uaddr2);
+    } else if (OS::TGT_FUTEX_WAKE_OP == op) {
+        /*
+         * The FUTEX_WAKE_OP operation is equivalent to executing the
+         * following code atomically and totally ordered with respect to
+         * other futex operations on any of the two supplied futex words:
+         *
+         *   int oldval = *(int *) addr2;
+         *   *(int *) addr2 = oldval op oparg;
+         *   futex(addr1, FUTEX_WAKE, val, 0, 0, 0);
+         *   if (oldval cmp cmparg)
+         *        futex(addr2, FUTEX_WAKE, val2, 0, 0, 0);
+         *
+         * (op, oparg, cmp, cmparg are encoded in val3)
+         *
+         * +---+---+-----------+-----------+
+         * |op |cmp|   oparg   |  cmparg   |
+         * +---+---+-----------+-----------+
+         *   4   4       12          12    <== # of bits
+         *
+         * reference: http://man7.org/linux/man-pages/man2/futex.2.html
+         *
+         */
+        // get value from simulated-space
+        BufferArg buf(uaddr2, sizeof(int));
+        buf.copyIn(tc->getMemProxy());
+        int oldval = *(int*)buf.bufferPtr();
+        int newval = oldval;
+        // extract op, oparg, cmp, cmparg from val3
+        int wake_cmparg =  val3 & 0xfff;
+        int wake_oparg  = (val3 & 0xfff000)   >> 12;
+        int wake_cmp    = (val3 & 0xf000000)  >> 24;
+        int wake_op     = (val3 & 0xf0000000) >> 28;
+        if ((wake_op & OS::TGT_FUTEX_OP_ARG_SHIFT) >> 3 == 1)
+            wake_oparg = (1 << wake_oparg);
+        wake_op &= ~OS::TGT_FUTEX_OP_ARG_SHIFT;
+        // perform operation on the value of the second futex
+        if (wake_op == OS::TGT_FUTEX_OP_SET)
+            newval = wake_oparg;
+        else if (wake_op == OS::TGT_FUTEX_OP_ADD)
+            newval += wake_oparg;
+        else if (wake_op == OS::TGT_FUTEX_OP_OR)
+            newval |= wake_oparg;
+        else if (wake_op == OS::TGT_FUTEX_OP_ANDN)
+            newval &= ~wake_oparg;
+        else if (wake_op == OS::TGT_FUTEX_OP_XOR)
+            newval ^= wake_oparg;
+        // copy updated value back to simulated-space
+        *(int*)buf.bufferPtr() = newval;
+        buf.copyOut(tc->getMemProxy());
+        // perform the first wake-up
+        int woken1 = futex_map.wakeup(uaddr, process->tgid(), val);
+        int woken2 = 0;
+        // calculate the condition of the second wake-up
+        bool is_wake2 = false;
+        if (wake_cmp == OS::TGT_FUTEX_OP_CMP_EQ)
+            is_wake2 = oldval == wake_cmparg;
+        else if (wake_cmp == OS::TGT_FUTEX_OP_CMP_NE)
+            is_wake2 = oldval != wake_cmparg;
+        else if (wake_cmp == OS::TGT_FUTEX_OP_CMP_LT)
+            is_wake2 = oldval < wake_cmparg;
+        else if (wake_cmp == OS::TGT_FUTEX_OP_CMP_LE)
+            is_wake2 = oldval <= wake_cmparg;
+        else if (wake_cmp == OS::TGT_FUTEX_OP_CMP_GT)
+            is_wake2 = oldval > wake_cmparg;
+        else if (wake_cmp == OS::TGT_FUTEX_OP_CMP_GE)
+            is_wake2 = oldval >= wake_cmparg;
+        // perform the second wake-up
+        if (is_wake2)
+            woken2 = futex_map.wakeup(uaddr2, process->tgid(), timeout);
+
+        return woken1 + woken2;
+    }
     warn("futex: op %d not implemented; ignoring.", op);
     return -ENOSYS;
 }
@@ -671,7 +844,7 @@ openImpl(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc,
         auto ffdp = std::dynamic_pointer_cast<FileFDEntry>(fdep);
         if (!ffdp)
             return -EBADF;
-        path.insert(0, ffdp->getFileName());
+        path.insert(0, ffdp->getFileName() + "/");
     }
 
     /**
@@ -881,6 +1054,80 @@ chmodFunc(SyscallDesc *desc, int callnum, Process *process,
     return 0;
 }
 
+template <class OS>
+SyscallReturn
+pollFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    Addr fdsPtr = p->getSyscallArg(tc, index);
+    int nfds = p->getSyscallArg(tc, index);
+    int tmout = p->getSyscallArg(tc, index);
+
+    BufferArg fdsBuf(fdsPtr, sizeof(struct pollfd) * nfds);
+    fdsBuf.copyIn(tc->getMemProxy());
+
+    /**
+     * Record the target file descriptors in a local variable. We need to
+     * replace them with host file descriptors but we need a temporary copy
+     * for later. Afterwards, replace each target file descriptor in the
+     * poll_fd array with its host_fd.
+     */
+    int temp_tgt_fds[nfds];
+    for (index = 0; index < nfds; index++) {
+        temp_tgt_fds[index] = ((struct pollfd *)fdsBuf.bufferPtr())[index].fd;
+        auto tgt_fd = temp_tgt_fds[index];
+        auto hbfdp = std::dynamic_pointer_cast<HBFDEntry>((*p->fds)[tgt_fd]);
+        if (!hbfdp)
+            return -EBADF;
+        auto host_fd = hbfdp->getSimFD();
+        ((struct pollfd *)fdsBuf.bufferPtr())[index].fd = host_fd;
+    }
+
+    /**
+     * We cannot allow an infinite poll to occur or it will inevitably cause
+     * a deadlock in the gem5 simulator with clone. We must pass in tmout with
+     * a non-negative value, however it also makes no sense to poll on the
+     * underlying host for any other time than tmout a zero timeout.
+     */
+    int status;
+    if (tmout < 0) {
+        status = poll((struct pollfd *)fdsBuf.bufferPtr(), nfds, 0);
+        if (status == 0) {
+            /**
+             * If blocking indefinitely, check the signal list to see if a
+             * signal would break the poll out of the retry cycle and try
+             * to return the signal interrupt instead.
+             */
+            System *sysh = tc->getSystemPtr();
+            std::list<BasicSignal>::iterator it;
+            for (it=sysh->signalList.begin(); it!=sysh->signalList.end(); it++)
+                if (it->receiver == p)
+                    return -EINTR;
+            return SyscallReturn::retry();
+        }
+    } else
+        status = poll((struct pollfd *)fdsBuf.bufferPtr(), nfds, 0);
+
+    if (status == -1)
+        return -errno;
+
+    /**
+     * Replace each host_fd in the returned poll_fd array with its original
+     * target file descriptor.
+     */
+    for (index = 0; index < nfds; index++) {
+        auto tgt_fd = temp_tgt_fds[index];
+        ((struct pollfd *)fdsBuf.bufferPtr())[index].fd = tgt_fd;
+    }
+
+    /**
+     * Copy out the pollfd struct because the host may have updated fields
+     * in the structure.
+     */
+    fdsBuf.copyOut(tc->getMemProxy());
+
+    return status;
+}
 
 /// Target fchmod() handler.
 template <class OS>
@@ -1204,7 +1451,6 @@ fstatFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
     return 0;
 }
 
-
 /// Target statfs() handler.
 template <class OS>
 SyscallReturn
@@ -1243,21 +1489,21 @@ cloneFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
 {
     int index = 0;
 
-    TheISA::IntReg flags = p->getSyscallArg(tc, index);
-    TheISA::IntReg newStack = p->getSyscallArg(tc, index);
+    RegVal flags = p->getSyscallArg(tc, index);
+    RegVal newStack = p->getSyscallArg(tc, index);
     Addr ptidPtr = p->getSyscallArg(tc, index);
 
-#if THE_ISA == RISCV_ISA
+#if THE_ISA == RISCV_ISA or THE_ISA == ARM_ISA
     /**
-     * Linux kernel 4.15 sets CLONE_BACKWARDS flag for RISC-V.
+     * Linux sets CLONE_BACKWARDS flag for RISC-V and Arm.
      * The flag defines the list of clone() arguments in the following
      * order: flags -> newStack -> ptidPtr -> tlsPtr -> ctidPtr
      */
-    Addr tlsPtr M5_VAR_USED = p->getSyscallArg(tc, index);
+    Addr tlsPtr = p->getSyscallArg(tc, index);
     Addr ctidPtr = p->getSyscallArg(tc, index);
 #else
     Addr ctidPtr = p->getSyscallArg(tc, index);
-    Addr tlsPtr M5_VAR_USED = p->getSyscallArg(tc, index);
+    Addr tlsPtr = p->getSyscallArg(tc, index);
 #endif
 
     if (((flags & OS::TGT_CLONE_SIGHAND)&& !(flags & OS::TGT_CLONE_VM)) ||
@@ -1269,8 +1515,11 @@ cloneFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
         return -EINVAL;
 
     ThreadContext *ctc;
-    if (!(ctc = p->findFreeContext()))
-        fatal("clone: no spare thread context in system");
+    if (!(ctc = p->findFreeContext())) {
+        DPRINTF_SYSCALL(Verbose, "clone: no spare thread context in system"
+                        "[cpu %d, thread %d]", tc->cpuId(), tc->threadId());
+        return -EAGAIN;
+    }
 
     /**
      * Note that ProcessParams is generated by swig and there are no other
@@ -1339,33 +1588,7 @@ cloneFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
 
     ctc->clearArchRegs();
 
-#if THE_ISA == ALPHA_ISA
-    TheISA::copyMiscRegs(tc, ctc);
-#elif THE_ISA == SPARC_ISA
-    TheISA::copyRegs(tc, ctc);
-    ctc->setIntReg(TheISA::NumIntArchRegs + 6, 0);
-    ctc->setIntReg(TheISA::NumIntArchRegs + 4, 0);
-    ctc->setIntReg(TheISA::NumIntArchRegs + 3, TheISA::NWindows - 2);
-    ctc->setIntReg(TheISA::NumIntArchRegs + 5, TheISA::NWindows);
-    ctc->setMiscReg(TheISA::MISCREG_CWP, 0);
-    ctc->setIntReg(TheISA::NumIntArchRegs + 7, 0);
-    ctc->setMiscRegNoEffect(TheISA::MISCREG_TL, 0);
-    ctc->setMiscReg(TheISA::MISCREG_ASI, TheISA::ASI_PRIMARY);
-    for (int y = 8; y < 32; y++)
-        ctc->setIntReg(y, tc->readIntReg(y));
-#elif THE_ISA == ARM_ISA or THE_ISA == X86_ISA or THE_ISA == RISCV_ISA
-    TheISA::copyRegs(tc, ctc);
-#endif
-
-#if THE_ISA == X86_ISA
-    if (flags & OS::TGT_CLONE_SETTLS) {
-        ctc->setMiscRegNoEffect(TheISA::MISCREG_FS_BASE, tlsPtr);
-        ctc->setMiscRegNoEffect(TheISA::MISCREG_FS_EFF_BASE, tlsPtr);
-    }
-#endif
-
-    if (newStack)
-        ctc->setIntReg(TheISA::StackPointerReg, newStack);
+    OS::archClone(flags, p, cp, tc, ctc, newStack, tlsPtr);
 
     cp->setSyscallReturn(ctc, 0);
 
@@ -1376,7 +1599,9 @@ cloneFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
     ctc->setIntReg(TheISA::SyscallPseudoReturnReg, 1);
 #endif
 
-    ctc->pcState(tc->nextInstAddr());
+    TheISA::PCState cpc = tc->pcState();
+    cpc.advance();
+    ctc->pcState(cpc);
     ctc->activate();
 
     return cp->pid();
@@ -1407,6 +1632,44 @@ fstatfsFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
     return 0;
 }
 
+/// Target readv() handler.
+template <class OS>
+SyscallReturn
+readvFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    int tgt_fd = p->getSyscallArg(tc, index);
+
+    auto ffdp = std::dynamic_pointer_cast<FileFDEntry>((*p->fds)[tgt_fd]);
+    if (!ffdp)
+        return -EBADF;
+    int sim_fd = ffdp->getSimFD();
+
+    SETranslatingPortProxy &prox = tc->getMemProxy();
+    uint64_t tiov_base = p->getSyscallArg(tc, index);
+    size_t count = p->getSyscallArg(tc, index);
+    typename OS::tgt_iovec tiov[count];
+    struct iovec hiov[count];
+    for (size_t i = 0; i < count; ++i) {
+        prox.readBlob(tiov_base + (i * sizeof(typename OS::tgt_iovec)),
+                      (uint8_t*)&tiov[i], sizeof(typename OS::tgt_iovec));
+        hiov[i].iov_len = TheISA::gtoh(tiov[i].iov_len);
+        hiov[i].iov_base = new char [hiov[i].iov_len];
+    }
+
+    int result = readv(sim_fd, hiov, count);
+    int local_errno = errno;
+
+    for (size_t i = 0; i < count; ++i) {
+        if (result != -1) {
+            prox.writeBlob(TheISA::htog(tiov[i].iov_base),
+                           (uint8_t*)hiov[i].iov_base, hiov[i].iov_len);
+        }
+        delete [] (char *)hiov[i].iov_base;
+    }
+
+    return (result == -1) ? -local_errno : result;
+}
 
 /// Target writev() handler.
 template <class OS>
@@ -1441,10 +1704,7 @@ writevFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
     for (size_t i = 0; i < count; ++i)
         delete [] (char *)hiov[i].iov_base;
 
-    if (result < 0)
-        return -errno;
-
-    return result;
+    return (result == -1) ? -errno : result;
 }
 
 /// Real mmap handler.
@@ -2072,5 +2332,446 @@ tgkillFunc(SyscallDesc *desc, int num, Process *process, ThreadContext *tc)
     return 0;
 }
 
+template <class OS>
+SyscallReturn
+socketFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    int domain = p->getSyscallArg(tc, index);
+    int type = p->getSyscallArg(tc, index);
+    int prot = p->getSyscallArg(tc, index);
+
+    int sim_fd = socket(domain, type, prot);
+    if (sim_fd == -1)
+        return -errno;
+
+    auto sfdp = std::make_shared<SocketFDEntry>(sim_fd, domain, type, prot);
+    int tgt_fd = p->fds->allocFD(sfdp);
+
+    return tgt_fd;
+}
+
+template <class OS>
+SyscallReturn
+socketpairFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    int domain = p->getSyscallArg(tc, index);
+    int type = p->getSyscallArg(tc, index);
+    int prot = p->getSyscallArg(tc, index);
+    Addr svPtr = p->getSyscallArg(tc, index);
+
+    BufferArg svBuf((Addr)svPtr, 2 * sizeof(int));
+    int status = socketpair(domain, type, prot, (int *)svBuf.bufferPtr());
+    if (status == -1)
+        return -errno;
+
+    int *fds = (int *)svBuf.bufferPtr();
+
+    auto sfdp1 = std::make_shared<SocketFDEntry>(fds[0], domain, type, prot);
+    fds[0] = p->fds->allocFD(sfdp1);
+    auto sfdp2 = std::make_shared<SocketFDEntry>(fds[1], domain, type, prot);
+    fds[1] = p->fds->allocFD(sfdp2);
+    svBuf.copyOut(tc->getMemProxy());
+
+    return status;
+}
+
+template <class OS>
+SyscallReturn
+selectFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
+{
+    int retval;
+
+    int index = 0;
+    int nfds_t = p->getSyscallArg(tc, index);
+    Addr fds_read_ptr = p->getSyscallArg(tc, index);
+    Addr fds_writ_ptr = p->getSyscallArg(tc, index);
+    Addr fds_excp_ptr = p->getSyscallArg(tc, index);
+    Addr time_val_ptr = p->getSyscallArg(tc, index);
+
+    TypedBufferArg<typename OS::fd_set> rd_t(fds_read_ptr);
+    TypedBufferArg<typename OS::fd_set> wr_t(fds_writ_ptr);
+    TypedBufferArg<typename OS::fd_set> ex_t(fds_excp_ptr);
+    TypedBufferArg<typename OS::timeval> tp(time_val_ptr);
+
+    /**
+     * Host fields. Notice that these use the definitions from the system
+     * headers instead of the gem5 headers and libraries. If the host and
+     * target have different header file definitions, this will not work.
+     */
+    fd_set rd_h;
+    FD_ZERO(&rd_h);
+    fd_set wr_h;
+    FD_ZERO(&wr_h);
+    fd_set ex_h;
+    FD_ZERO(&ex_h);
+
+    /**
+     * Copy in the fd_set from the target.
+     */
+    if (fds_read_ptr)
+        rd_t.copyIn(tc->getMemProxy());
+    if (fds_writ_ptr)
+        wr_t.copyIn(tc->getMemProxy());
+    if (fds_excp_ptr)
+        ex_t.copyIn(tc->getMemProxy());
+
+    /**
+     * We need to translate the target file descriptor set into a host file
+     * descriptor set. This involves both our internal process fd array
+     * and the fd_set defined in Linux header files. The nfds field also
+     * needs to be updated as it will be only target specific after
+     * retrieving it from the target; the nfds value is expected to be the
+     * highest file descriptor that needs to be checked, so we need to extend
+     * it out for nfds_h when we do the update.
+     */
+    int nfds_h = 0;
+    std::map<int, int> trans_map;
+    auto try_add_host_set = [&](fd_set *tgt_set_entry,
+                                fd_set *hst_set_entry,
+                                int iter) -> bool
+    {
+        /**
+         * By this point, we know that we are looking at a valid file
+         * descriptor set on the target. We need to check if the target file
+         * descriptor value passed in as iter is part of the set.
+         */
+        if (FD_ISSET(iter, tgt_set_entry)) {
+            /**
+             * We know that the target file descriptor belongs to the set,
+             * but we do not yet know if the file descriptor is valid or
+             * that we have a host mapping. Check that now.
+             */
+            auto hbfdp = std::dynamic_pointer_cast<HBFDEntry>((*p->fds)[iter]);
+            if (!hbfdp)
+                return true;
+            auto sim_fd = hbfdp->getSimFD();
+
+            /**
+             * Add the sim_fd to tgt_fd translation into trans_map for use
+             * later when we need to zero the target fd_set structures and
+             * then update them with hits returned from the host select call.
+             */
+            trans_map[sim_fd] = iter;
+
+            /**
+             * We know that the host file descriptor exists so now we check
+             * if we need to update the max count for nfds_h before passing
+             * the duplicated structure into the host.
+             */
+            nfds_h = std::max(nfds_h - 1, sim_fd + 1);
+
+            /**
+             * Add the host file descriptor to the set that we are going to
+             * pass into the host.
+             */
+            FD_SET(sim_fd, hst_set_entry);
+        }
+        return false;
+    };
+
+    for (int i = 0; i < nfds_t; i++) {
+        if (fds_read_ptr) {
+            bool ebadf = try_add_host_set((fd_set*)&*rd_t, &rd_h, i);
+            if (ebadf) return -EBADF;
+        }
+        if (fds_writ_ptr) {
+            bool ebadf = try_add_host_set((fd_set*)&*wr_t, &wr_h, i);
+            if (ebadf) return -EBADF;
+        }
+        if (fds_excp_ptr) {
+            bool ebadf = try_add_host_set((fd_set*)&*ex_t, &ex_h, i);
+            if (ebadf) return -EBADF;
+        }
+    }
+
+    if (time_val_ptr) {
+        /**
+         * It might be possible to decrement the timeval based on some
+         * derivation of wall clock determined from elapsed simulator ticks
+         * but that seems like overkill. Rather, we just set the timeval with
+         * zero timeout. (There is no reason to block during the simulation
+         * as it only decreases simulator performance.)
+         */
+        tp->tv_sec = 0;
+        tp->tv_usec = 0;
+
+        retval = select(nfds_h,
+                        fds_read_ptr ? &rd_h : nullptr,
+                        fds_writ_ptr ? &wr_h : nullptr,
+                        fds_excp_ptr ? &ex_h : nullptr,
+                        (timeval*)&*tp);
+    } else {
+        /**
+         * If the timeval pointer is null, setup a new timeval structure to
+         * pass into the host select call. Unfortunately, we will need to
+         * manually check the return value and throw a retry fault if the
+         * return value is zero. Allowing the system call to block will
+         * likely deadlock the event queue.
+         */
+        struct timeval tv = { 0, 0 };
+
+        retval = select(nfds_h,
+                        fds_read_ptr ? &rd_h : nullptr,
+                        fds_writ_ptr ? &wr_h : nullptr,
+                        fds_excp_ptr ? &ex_h : nullptr,
+                        &tv);
+
+        if (retval == 0) {
+            /**
+             * If blocking indefinitely, check the signal list to see if a
+             * signal would break the poll out of the retry cycle and try to
+             * return the signal interrupt instead.
+             */
+            for (auto sig : tc->getSystemPtr()->signalList)
+                if (sig.receiver == p)
+                    return -EINTR;
+            return SyscallReturn::retry();
+        }
+    }
+
+    if (retval == -1)
+        return -errno;
+
+    FD_ZERO((fd_set*)&*rd_t);
+    FD_ZERO((fd_set*)&*wr_t);
+    FD_ZERO((fd_set*)&*ex_t);
+
+    /**
+     * We need to translate the host file descriptor set into a target file
+     * descriptor set. This involves both our internal process fd array
+     * and the fd_set defined in header files.
+     */
+    for (int i = 0; i < nfds_h; i++) {
+        if (fds_read_ptr) {
+            if (FD_ISSET(i, &rd_h))
+                FD_SET(trans_map[i], (fd_set*)&*rd_t);
+        }
+
+        if (fds_writ_ptr) {
+            if (FD_ISSET(i, &wr_h))
+                FD_SET(trans_map[i], (fd_set*)&*wr_t);
+        }
+
+        if (fds_excp_ptr) {
+            if (FD_ISSET(i, &ex_h))
+                FD_SET(trans_map[i], (fd_set*)&*ex_t);
+        }
+    }
+
+    if (fds_read_ptr)
+        rd_t.copyOut(tc->getMemProxy());
+    if (fds_writ_ptr)
+        wr_t.copyOut(tc->getMemProxy());
+    if (fds_excp_ptr)
+        ex_t.copyOut(tc->getMemProxy());
+    if (time_val_ptr)
+        tp.copyOut(tc->getMemProxy());
+
+    return retval;
+}
+
+template <class OS>
+SyscallReturn
+readFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    int tgt_fd = p->getSyscallArg(tc, index);
+    Addr buf_ptr = p->getSyscallArg(tc, index);
+    int nbytes = p->getSyscallArg(tc, index);
+
+    auto hbfdp = std::dynamic_pointer_cast<HBFDEntry>((*p->fds)[tgt_fd]);
+    if (!hbfdp)
+        return -EBADF;
+    int sim_fd = hbfdp->getSimFD();
+
+    struct pollfd pfd;
+    pfd.fd = sim_fd;
+    pfd.events = POLLIN | POLLPRI;
+    if ((poll(&pfd, 1, 0) == 0)
+        && !(hbfdp->getFlags() & OS::TGT_O_NONBLOCK))
+        return SyscallReturn::retry();
+
+    BufferArg buf_arg(buf_ptr, nbytes);
+    int bytes_read = read(sim_fd, buf_arg.bufferPtr(), nbytes);
+
+    if (bytes_read > 0)
+        buf_arg.copyOut(tc->getMemProxy());
+
+    return (bytes_read == -1) ? -errno : bytes_read;
+}
+
+template <class OS>
+SyscallReturn
+writeFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    int tgt_fd = p->getSyscallArg(tc, index);
+    Addr buf_ptr = p->getSyscallArg(tc, index);
+    int nbytes = p->getSyscallArg(tc, index);
+
+    auto hbfdp = std::dynamic_pointer_cast<HBFDEntry>((*p->fds)[tgt_fd]);
+    if (!hbfdp)
+        return -EBADF;
+    int sim_fd = hbfdp->getSimFD();
+
+    BufferArg buf_arg(buf_ptr, nbytes);
+    buf_arg.copyIn(tc->getMemProxy());
+
+    struct pollfd pfd;
+    pfd.fd = sim_fd;
+    pfd.events = POLLOUT;
+
+    /**
+     * We don't want to poll on /dev/random. The kernel will not enable the
+     * file descriptor for writing unless the entropy in the system falls
+     * below write_wakeup_threshold. This is not guaranteed to happen
+     * depending on host settings.
+     */
+    auto ffdp = std::dynamic_pointer_cast<FileFDEntry>(hbfdp);
+    if (ffdp && (ffdp->getFileName() != "/dev/random")) {
+        if (!poll(&pfd, 1, 0) && !(ffdp->getFlags() & OS::TGT_O_NONBLOCK))
+            return SyscallReturn::retry();
+    }
+
+    int bytes_written = write(sim_fd, buf_arg.bufferPtr(), nbytes);
+
+    if (bytes_written != -1)
+        fsync(sim_fd);
+
+    return (bytes_written == -1) ? -errno : bytes_written;
+}
+
+template <class OS>
+SyscallReturn
+wait4Func(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    int index = 0;
+    pid_t pid = p->getSyscallArg(tc, index);
+    Addr statPtr = p->getSyscallArg(tc, index);
+    int options = p->getSyscallArg(tc, index);
+    Addr rusagePtr = p->getSyscallArg(tc, index);
+
+    if (rusagePtr)
+        DPRINTFR(SyscallVerbose,
+                 "%d: %s: syscall wait4: rusage pointer provided however "
+                 "functionality not supported. Ignoring rusage pointer.\n",
+                 curTick(), tc->getCpuPtr()->name());
+
+    /**
+     * Currently, wait4 is only implemented so that it will wait for children
+     * exit conditions which are denoted by a SIGCHLD signals posted into the
+     * system signal list. We return no additional information via any of the
+     * parameters supplied to wait4. If nothing is found in the system signal
+     * list, we will wait indefinitely for SIGCHLD to post by retrying the
+     * call.
+     */
+    System *sysh = tc->getSystemPtr();
+    std::list<BasicSignal>::iterator iter;
+    for (iter=sysh->signalList.begin(); iter!=sysh->signalList.end(); iter++) {
+        if (iter->receiver == p) {
+            if (pid < -1) {
+                if ((iter->sender->pgid() == -pid)
+                    && (iter->signalValue == OS::TGT_SIGCHLD))
+                    goto success;
+            } else if (pid == -1) {
+                if (iter->signalValue == OS::TGT_SIGCHLD)
+                    goto success;
+            } else if (pid == 0) {
+                if ((iter->sender->pgid() == p->pgid())
+                    && (iter->signalValue == OS::TGT_SIGCHLD))
+                    goto success;
+            } else {
+                if ((iter->sender->pid() == pid)
+                    && (iter->signalValue == OS::TGT_SIGCHLD))
+                    goto success;
+            }
+        }
+    }
+
+    return (options & OS::TGT_WNOHANG) ? 0 : SyscallReturn::retry();
+
+success:
+    // Set status to EXITED for WIFEXITED evaluations.
+    const int EXITED = 0;
+    BufferArg statusBuf(statPtr, sizeof(int));
+    *(int *)statusBuf.bufferPtr() = EXITED;
+    statusBuf.copyOut(tc->getMemProxy());
+
+    // Return the child PID.
+    pid_t retval = iter->sender->pid();
+    sysh->signalList.erase(iter);
+    return retval;
+}
+
+template <class OS>
+SyscallReturn
+acceptFunc(SyscallDesc *desc, int num, Process *p, ThreadContext *tc)
+{
+    struct sockaddr sa;
+    socklen_t addrLen;
+    int host_fd;
+    int index = 0;
+    int tgt_fd = p->getSyscallArg(tc, index);
+    Addr addrPtr = p->getSyscallArg(tc, index);
+    Addr lenPtr = p->getSyscallArg(tc, index);
+
+    BufferArg *lenBufPtr = nullptr;
+    BufferArg *addrBufPtr = nullptr;
+
+    auto sfdp = std::dynamic_pointer_cast<SocketFDEntry>((*p->fds)[tgt_fd]);
+    if (!sfdp)
+        return -EBADF;
+    int sim_fd = sfdp->getSimFD();
+
+    /**
+     * We poll the socket file descriptor first to guarantee that we do not
+     * block on our accept call. The socket can be opened without the
+     * non-blocking flag (it blocks). This will cause deadlocks between
+     * communicating processes.
+     */
+    struct pollfd pfd;
+    pfd.fd = sim_fd;
+    pfd.events = POLLIN | POLLPRI;
+    if ((poll(&pfd, 1, 0) == 0)
+        && !(sfdp->getFlags() & OS::TGT_O_NONBLOCK))
+        return SyscallReturn::retry();
+
+    if (lenPtr) {
+        lenBufPtr = new BufferArg(lenPtr, sizeof(socklen_t));
+        lenBufPtr->copyIn(tc->getMemProxy());
+        memcpy(&addrLen, (socklen_t *)lenBufPtr->bufferPtr(),
+               sizeof(socklen_t));
+    }
+
+    if (addrPtr) {
+        addrBufPtr = new BufferArg(addrPtr, sizeof(struct sockaddr));
+        addrBufPtr->copyIn(tc->getMemProxy());
+        memcpy(&sa, (struct sockaddr *)addrBufPtr->bufferPtr(),
+               sizeof(struct sockaddr));
+    }
+
+    host_fd = accept(sim_fd, &sa, &addrLen);
+
+    if (host_fd == -1)
+        return -errno;
+
+    if (addrPtr) {
+        memcpy(addrBufPtr->bufferPtr(), &sa, sizeof(sa));
+        addrBufPtr->copyOut(tc->getMemProxy());
+        delete(addrBufPtr);
+    }
+
+    if (lenPtr) {
+        *(socklen_t *)lenBufPtr->bufferPtr() = addrLen;
+        lenBufPtr->copyOut(tc->getMemProxy());
+        delete(lenBufPtr);
+    }
+
+    auto afdp = std::make_shared<SocketFDEntry>(host_fd, sfdp->_domain,
+                                                sfdp->_type, sfdp->_protocol);
+    return p->fds->allocFD(afdp);
+}
 
 #endif // __SIM_SYSCALL_EMUL_HH__

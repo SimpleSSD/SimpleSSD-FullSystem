@@ -76,4 +76,7 @@
 //Templates for Neon instructions
 ##include "neon.isa"
 
+//Templates for Crypto instructions
+##include "crypto.isa"
+
 ##include "neon64.isa"

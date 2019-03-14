@@ -56,6 +56,8 @@
 #  define M5_DEPRECATED __attribute__((deprecated))
 #  define M5_DEPRECATED_MSG(MSG) __attribute__((deprecated(MSG)))
 #  define M5_UNREACHABLE __builtin_unreachable()
+#  define M5_PUBLIC __attribute__ ((visibility ("default")))
+#  define M5_LOCAL __attribute__ ((visibility ("hidden")))
 #endif
 
 #if defined(__clang__)
@@ -90,7 +92,7 @@
 namespace m5
 {
 
-#if __cplusplus == 201402L // C++14
+#if __cplusplus >= 201402L // C++14
 
 using std::make_unique;
 
@@ -106,7 +108,7 @@ make_unique( Args&&... constructor_args )
            );
 }
 
-#endif // __cplusplus == 201402L
+#endif // __cplusplus >= 201402L
 
 } //namespace m5
 
