@@ -36,6 +36,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # Author: Dam Sunwoo
+#  Modified by CAMELab
 #
 
 # This script converts gem5 output to ARM DS-5 Streamline .apc project file
@@ -56,8 +57,8 @@
 #
 # <dest .apc folder>: Destination .apc folder path
 #
-# APC project generation based on Gator v17 (DS-5 v5.17)
-# Subsequent versions should be backward compatible
+# APC project generation based on Gator v18 (DS-5 v5.18)
+# To analyse generated APC project, you should use DS-5 v5.28.1 or lower
 
 import re, sys, os
 from ConfigParser import ConfigParser
@@ -78,8 +79,8 @@ parser = argparse.ArgumentParser(
 
         Visit http://www.gem5.org/Streamline for more details.
 
-        APC project generation based on Gator v17 (DS-5 v5.17)
-        Subsequent versions should be backward compatible
+        APC project generation based on Gator v17 (DS-5 v5.18)
+        To analyse generated APC project, you should use DS-5 v5.28.1 or lower
         """)
 
 parser.add_argument("stat_config_file", metavar="<stat_config.ini>",
@@ -131,7 +132,7 @@ end_tick = -1
 # Parse gem5 config.ini file to determine some system configurations.
 # Number of CPUs, L2s, etc.
 def parseConfig(config_file):
-    global num_cpus, num_l2
+    global num_cpus, num_l2, hil_cpus, icl_cpus, ftl_cpus
 
     print "\n==============================="
     print "Parsing gem5 config.ini file..."
@@ -149,18 +150,34 @@ def parseConfig(config_file):
         while config.has_section("system.cpu" + str(num_cpus)):
             num_cpus += 1
 
-    if config.has_section("system.l2_cache"):
+    if config.has_section("system.l2"):
         num_l2 = 1
     else:
         num_l2 = 0
         while config.has_section("system.l2_cache" + str(num_l2)):
             num_l2 += 1
 
+    hil_cpus = 0
+    while config.has_section("system.pci_nvme.cpu.hil" + str(hil_cpus)):
+        hil_cpus += 1
+
+    icl_cpus = 0
+    while config.has_section("system.pci_nvme.cpu.icl" + str(hil_cpus)):
+        hil_cpus += 1
+    
+    ftl_cpus = 0
+    while config.has_section("system.pci_nvme.cpu.ftl" + str(hil_cpus)):
+        hil_cpus += 1
+
     print "Num CPUs:", num_cpus
     print "Num L2s:", num_l2
     print ""
+    print("SimpleSSD specific")
+    print(" HIL CPUs: " + str(hil_cpus))
+    print(" ICL CPUs: " + str(icl_cpus))
+    print(" FTL CPUs: " + str(ftl_cpus))
 
-    return (num_cpus, num_l2)
+    return (num_cpus, num_l2, hil_cpus, icl_cpus, ftl_cpus)
 
 
 process_dict = {}
@@ -400,11 +417,12 @@ def addFrameHeader(frame_type, body, core):
 #  - uptime: packed64
 def summaryFrame(timestamp, uptime):
     frame_type = "Summary"
+    packed_code = packed32(1)
     newline_canary = stringList("1\n2\r\n3\r4\n\r5")
     monotonic_delta = packed64(0)
     end_of_attr = stringList("")
-    body = newline_canary + packed64(timestamp) + packed64(uptime)
-    body += monotonic_delta + end_of_attr
+    body = packed_code + newline_canary + packed64(timestamp)
+    body += packed64(uptime) + monotonic_delta + end_of_attr
     ret = addFrameHeader(frame_type, body, 0)
     return ret
 
@@ -847,6 +865,48 @@ def registerStats(config_file):
                     stats.register(name, group, i, False)
                 i += 1
 
+    simplessd_groups = config.options('SIMPLESSD')
+    for group in simplessd_groups:
+        i = 0
+        simplessd_list = config.get('SIMPLESSD', group).split('\n')
+        for item in simplessd_list:
+            if item:
+                stats.register(item, group, i, False)
+                i += 1
+
+    simplessd_hil_cpu_groups = config.options('SIMPLESSD_PER_HIL_CPU')
+    for group in simplessd_hil_cpu_groups:
+        i = 0
+        simplessd_hil_cpu_list = config.get('SIMPLESSD_PER_HIL_CPU', group).split('\n')
+        for item in simplessd_hil_cpu_list:
+            if item:
+                for hil in range(hil_cpus):
+                    name = re.sub("#", str(hil), item)
+                    stats.register(name, group, i, False)
+                i += 1
+
+    simplessd_icl_cpu_groups = config.options('SIMPLESSD_PER_ICL_CPU')
+    for group in simplessd_icl_cpu_groups:
+        i = 0
+        simplessd_icl_cpu_list = config.get('SIMPLESSD_PER_ICL_CPU', group).split('\n')
+        for item in simplessd_icl_cpu_list:
+            if item:
+                for icl in range(icl_cpus):
+                    name = re.sub("#", str(icl), item)
+                    stats.register(name, group, i, False)
+                i += 1
+
+    simplessd_ftl_cpu_groups = config.options('SIMPLESSD_PER_FTL_CPU')
+    for group in simplessd_ftl_cpu_groups:
+        i = 0
+        simplessd_ftl_cpu_list = config.get('SIMPLESSD_PER_FTL_CPU', group).split('\n')
+        for item in simplessd_ftl_cpu_list:
+            if item:
+                for ftl in range(ftl_cpus):
+                    name = re.sub("#", str(ftl), item)
+                    stats.register(name, group, i, False)
+                i += 1
+
     other_stat_groups = config.options('OTHER_STATS')
     for group in other_stat_groups:
         i = 0
@@ -1016,7 +1076,7 @@ def doCapturedXML(output_path, stats):
 
     xml = ET.Element("captured")
     xml.set("version", "1")
-    xml.set("protocol", "17")
+    xml.set("protocol", "18")
     xml.set("backtrace_processing", "none")
 
     target = ET.SubElement(xml, "target")
@@ -1176,7 +1236,7 @@ def createApcProject(input_path, output_path, stats):
 
     # Summary frame takes current system time and system uptime.
     # Filling in with random values for now.
-    writeBinary(blob, summaryFrame(1234, 5678))
+    writeBinary(blob, summaryFrame(0, 0))
 
     writeCookiesThreads(blob)
 
@@ -1212,7 +1272,8 @@ if not os.path.exists(input_path):
 ####
 # Parse gem5 configuration file to find # of CPUs and L2s
 ####
-(num_cpus, num_l2) = parseConfig(input_path + "/config.ini")
+(num_cpus, num_l2, hil_cpus, icl_cpus, ftl_cpus) = \
+    parseConfig(input_path + "/config.ini")
 
 ####
 # Parse task file to find process/thread info

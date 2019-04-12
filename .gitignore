@@ -33,3 +33,5 @@ m5out
 *.sh
 scripts/
 compile_flags.txt
+.vscode/
+*code-workspace
