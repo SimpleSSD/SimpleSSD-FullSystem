@@ -51,7 +51,7 @@ NVMeInterface::NVMeInterface(Params *p)
     return;
   }
 
-  conf = initSimpleSSDEngine(this, std::cout, std::cerr, configPath);
+  conf = initSimpleSSDEngine(this, &std::cout, &std::cerr, configPath);
 
   pcieGen = (SimpleSSD::PCIExpress::PCIE_GEN)conf.readInt(
       SimpleSSD::CONFIG_NVME, SimpleSSD::HIL::NVMe::NVME_PCIE_GEN);
@@ -108,13 +108,13 @@ Tick NVMeInterface::readConfig(PacketPtr pkt) {
 
     switch (size) {
       case sizeof(uint8_t):
-        pkt->set<uint8_t>(val);
+        pkt->setLE<uint8_t>(val);
         break;
       case sizeof(uint16_t):
-        pkt->set<uint16_t>(val);
+        pkt->setLE<uint16_t>(val);
         break;
       case sizeof(uint32_t):
-        pkt->set<uint32_t>(val);
+        pkt->setLE<uint32_t>(val);
         break;
       default:
         SimpleSSD::warn("nvme_interface: Invalid PCI config read size: %d",
@@ -160,7 +160,7 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     // Write on PCI capabilities
     if (offset == PMCAP_BASE + 4 &&
         size == sizeof(uint16_t)) {  // PMCAP Control Status
-      val = pkt->get<uint16_t>();
+      val = pkt->getLE<uint16_t>();
 
       if (val & 0x8000) {
         pmcap.pmcs &= 0x7F00;  // Clear PMES
@@ -170,7 +170,7 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     }
     else if (offset == MSICAP_BASE + 2 &&
              size == sizeof(uint16_t)) {  // MSICAP Message Control
-      val = pkt->get<uint16_t>();
+      val = pkt->getLE<uint16_t>();
 
       mode = (val & 0x0001) ? INTERRUPT_MSI : INTERRUPT_PIN;
 
@@ -185,27 +185,27 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     }
     else if (offset == MSICAP_BASE + 4 &&
              size == sizeof(uint32_t)) {  // MSICAP Message Address
-      msicap.ma = pkt->get<uint32_t>() & 0xFFFFFFFC;
+      msicap.ma = pkt->getLE<uint32_t>() & 0xFFFFFFFC;
     }
     else if (offset == MSICAP_BASE + 8 &&
              size == sizeof(uint32_t)) {  // MSICAP Message Upper Address
-      msicap.mua = pkt->get<uint32_t>();
+      msicap.mua = pkt->getLE<uint32_t>();
     }
     else if (offset == MSICAP_BASE + 12 &&
              size >= sizeof(uint16_t)) {  // MSICAP Message Data
-      msicap.md = pkt->get<uint16_t>();
+      msicap.md = pkt->getLE<uint16_t>();
     }
     else if (offset == MSICAP_BASE + 16 &&
              size == sizeof(uint32_t)) {  // MSICAP Interrupt Mask Bits
-      msicap.mmask = pkt->get<uint32_t>();
+      msicap.mmask = pkt->getLE<uint32_t>();
     }
     else if (offset == MSICAP_BASE + 20 &&
              size == sizeof(uint32_t)) {  // MSICAP Interrupt Pending Bits
-      msicap.mpend = pkt->get<uint32_t>();
+      msicap.mpend = pkt->getLE<uint32_t>();
     }
     else if (offset == MSIXCAP_BASE + 2 &&
              size == sizeof(uint16_t)) {  // MSIXCAP Message Control
-      val = pkt->get<uint16_t>();
+      val = pkt->getLE<uint16_t>();
 
       mode = (val & 0x8000) ? INTERRUPT_MSIX : INTERRUPT_PIN;
 
@@ -220,11 +220,11 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     }
     else if (offset == PXCAP_BASE + 8 &&
              size == sizeof(uint16_t)) {  // PXCAP Device Capabilities
-      pxcap.pxdc = pkt->get<uint16_t>();
+      pxcap.pxdc = pkt->getLE<uint16_t>();
     }
     else if (offset == PXCAP_BASE + 10 &&
              size == sizeof(uint16_t)) {  // PXCAP Device Status
-      val = pkt->get<uint16_t>();
+      val = pkt->getLE<uint16_t>();
 
       if (val & 0x0001) {
         pxcap.pxds &= 0xFFFE;
@@ -241,11 +241,11 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     }
     else if (offset == PXCAP_BASE + 16 &&
              size == sizeof(uint16_t)) {  // PXCAP Link Control
-      pxcap.pxlc = pkt->get<uint16_t>();
+      pxcap.pxlc = pkt->getLE<uint16_t>();
     }
     else if (offset == PXCAP_BASE + 18 &&
              size == sizeof(uint16_t)) {  // PXCAP Link Status
-      val = pkt->get<uint16_t>();
+      val = pkt->getLE<uint16_t>();
 
       if (val & 0x4000) {
         pxcap.pxls &= 0xBFFF;
@@ -256,7 +256,7 @@ Tick NVMeInterface::writeConfig(PacketPtr pkt) {
     }
     else if (offset == PXCAP_BASE + 40 &&
              size == sizeof(uint32_t)) {  // PXCAP Device Control 2
-      pxcap.pxdc2 = pkt->get<uint32_t>();
+      pxcap.pxdc2 = pkt->getLE<uint32_t>();
     }
     else {
       SimpleSSD::panic(

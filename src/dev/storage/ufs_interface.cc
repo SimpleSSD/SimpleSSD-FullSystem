@@ -47,7 +47,7 @@ UFSInterface::UFSInterface(const UFSInterfaceParams *p)
     return;
   }
 
-  conf = initSimpleSSDEngine(this, std::cout, std::cerr, p->SSDConfig);
+  conf = initSimpleSSDEngine(this, &std::cout, &std::cerr, p->SSDConfig);
 
   axiWidth = (SimpleSSD::ARM::AXI::BUS_WIDTH)conf.readInt(
       SimpleSSD::CONFIG_UFS, SimpleSSD::HIL::UFS::UFS_HOST_AXI_BUS_WIDTH);
@@ -79,14 +79,14 @@ Tick UFSInterface::read(PacketPtr pkt) {
     pController->readRegister(offset, data);
   }
 
-  pkt->set<uint32_t>(data);
+  pkt->setLE<uint32_t>(data);
   pkt->makeResponse();
 
   return pioDelay;
 }
 
 Tick UFSInterface::write(PacketPtr pkt) {
-  uint32_t data = pkt->get<uint32_t>();
+  uint32_t data = pkt->getLE<uint32_t>();
   uint32_t offset = pkt->getAddr() & 0xFF;
 
   if (pController && pkt->getSize() == 4) {

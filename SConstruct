@@ -936,7 +936,8 @@ if not isfile(joinpath(simplessd, 'CMakeLists.txt')):
           termcap.Normal)
     Exit(1)
 
-cmdline = ['cmake', '-DDRAMPOWER_SOURCE_DIR=' + drampower]
+# Try cmake3 first
+cmdline = ['cmake3', '-DDRAMPOWER_SOURCE_DIR=' + drampower]
 
 if GetOption('debug_simplessd'):
     cmdline.append('-DDEBUG_BUILD=on')
@@ -945,18 +946,30 @@ else:
 
 cmdline.append(simplessd)
 
-ret = subprocess.Popen(cmdline, cwd=workdir).wait()
+try:
+    ret = subprocess.Popen(cmdline, cwd=workdir).wait()
+except EnvironmentError:
+    ret = 1
 
-if ret == 1:
-    print(termcap.Red + termcap.Bold +
-          "Error: Generating build script of SimpleSSD failed." +
-          termcap.Normal)
-    Exit(1)
-elif ret > 1:
+    pass
+
+if ret > 0:
+    # Try cmake instead of cmake3
+    cmdline[0] = 'cmake'
+
+    try:
+        ret = subprocess.Popen(cmdline, cwd=workdir).wait()
+    except EnvironmentError:
+        ret = 1
+
+        pass
+
+if ret > 0:
     print(termcap.Red + termcap.Bold +
           "Error: Generating build script of SimpleSSD failed.\n" +
-          "  cmake command may not exists." +
+          "  Make sure that you have installed CMake version 3.10 or later." +
           termcap.Normal)
+
     Exit(1)
 
 ret = subprocess.Popen(['make', '-j' + str(jobs)],
