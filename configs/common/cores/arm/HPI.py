@@ -46,6 +46,7 @@ at: http://www.arm.com/ResearchEnablement/SystemModeling
 """
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 from m5.objects import *
 
@@ -1333,10 +1334,10 @@ class HPI_FUPool(MinorFUPool):
         HPI_MiscFU() # 6
         ]
 
-class HPI_DTB(ArmTLB):
+class HPI_DTB(ArmDTB):
     size = 256
 
-class HPI_ITB(ArmTLB):
+class HPI_ITB(ArmITB):
     size = 256
 
 class HPI_WalkCache(Cache):

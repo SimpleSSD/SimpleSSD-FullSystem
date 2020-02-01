@@ -333,6 +333,7 @@ PMU::readMiscRegInt(int misc_reg)
       case MISCREG_PMSWINC: // Software Increment Register (RAZ)
         return 0;
 
+      case MISCREG_PMSELR_EL0:
       case MISCREG_PMSELR:
         return reg_pmselr;
 
@@ -498,7 +499,7 @@ PMU::CounterState::isFiltered() const
     const PMEVTYPER_t filter(this->filter);
     const SCR scr(pmu.isa->readMiscRegNoEffect(MISCREG_SCR));
     const CPSR cpsr(pmu.isa->readMiscRegNoEffect(MISCREG_CPSR));
-    const ExceptionLevel el(opModeToEL((OperatingMode)(uint8_t)cpsr.mode));
+    const ExceptionLevel el(currEL(cpsr));
     const bool secure(inSecureState(scr, cpsr));
 
     switch (el) {

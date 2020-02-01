@@ -35,8 +35,8 @@
 #ifndef __CPU_PRED_BI_MODE_PRED_HH__
 #define __CPU_PRED_BI_MODE_PRED_HH__
 
+#include "base/sat_counter.hh"
 #include "cpu/pred/bpred_unit.hh"
-#include "cpu/pred/sat_counter.hh"
 #include "params/BiModeBP.hh"
 
 /**
@@ -87,13 +87,6 @@ class BiModeBP : public BPredUnit
         bool finalPred;
     };
 
-    // choice predictors
-    std::vector<SatCounter> choiceCounters;
-    // taken direction predictors
-    std::vector<SatCounter> takenCounters;
-    // not-taken direction predictors
-    std::vector<SatCounter> notTakenCounters;
-
     std::vector<unsigned> globalHistoryReg;
     unsigned globalHistoryBits;
     unsigned historyRegisterMask;
@@ -104,6 +97,13 @@ class BiModeBP : public BPredUnit
     unsigned globalPredictorSize;
     unsigned globalCtrBits;
     unsigned globalHistoryMask;
+
+    // choice predictors
+    std::vector<SatCounter> choiceCounters;
+    // taken direction predictors
+    std::vector<SatCounter> takenCounters;
+    // not-taken direction predictors
+    std::vector<SatCounter> notTakenCounters;
 
     unsigned choiceThreshold;
     unsigned takenThreshold;

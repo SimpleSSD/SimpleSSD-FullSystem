@@ -44,7 +44,6 @@
 #include "cpu/thread_context.hh"
 
 #include "arch/generic/vec_pred_reg.hh"
-#include "arch/kernel_stats.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "config/the_isa.hh"
@@ -52,6 +51,7 @@
 #include "cpu/quiesce_event.hh"
 #include "debug/Context.hh"
 #include "debug/Quiesce.hh"
+#include "kern/kernel_stats.hh"
 #include "params/BaseCPU.hh"
 #include "sim/full_system.hh"
 
@@ -139,7 +139,7 @@ ThreadContext::quiesce()
 
     suspend();
     if (getKernelStats())
-       getKernelStats()->quiesce();
+        getKernelStats()->quiesce();
 }
 
 
@@ -163,7 +163,7 @@ ThreadContext::quiesceTick(Tick resume)
 }
 
 void
-serialize(ThreadContext &tc, CheckpointOut &cp)
+serialize(const ThreadContext &tc, CheckpointOut &cp)
 {
     using namespace TheISA;
 
@@ -191,12 +191,12 @@ serialize(ThreadContext &tc, CheckpointOut &cp)
         intRegs[i] = tc.readIntRegFlat(i);
     SERIALIZE_ARRAY(intRegs, NumIntRegs);
 
-#ifdef ISA_HAS_CC_REGS
-    RegVal ccRegs[NumCCRegs];
-    for (int i = 0; i < NumCCRegs; ++i)
-        ccRegs[i] = tc.readCCRegFlat(i);
-    SERIALIZE_ARRAY(ccRegs, NumCCRegs);
-#endif
+    if (NumCCRegs) {
+        RegVal ccRegs[NumCCRegs];
+        for (int i = 0; i < NumCCRegs; ++i)
+            ccRegs[i] = tc.readCCRegFlat(i);
+        SERIALIZE_ARRAY(ccRegs, NumCCRegs);
+    }
 
     tc.pcState().serialize(cp);
 
@@ -232,12 +232,12 @@ unserialize(ThreadContext &tc, CheckpointIn &cp)
     for (int i = 0; i < NumIntRegs; ++i)
         tc.setIntRegFlat(i, intRegs[i]);
 
-#ifdef ISA_HAS_CC_REGS
-    RegVal ccRegs[NumCCRegs];
-    UNSERIALIZE_ARRAY(ccRegs, NumCCRegs);
-    for (int i = 0; i < NumCCRegs; ++i)
-        tc.setCCRegFlat(i, ccRegs[i]);
-#endif
+    if (NumCCRegs) {
+        RegVal ccRegs[NumCCRegs];
+        UNSERIALIZE_ARRAY(ccRegs, NumCCRegs);
+        for (int i = 0; i < NumCCRegs; ++i)
+            tc.setCCRegFlat(i, ccRegs[i]);
+    }
 
     PCState pcState;
     pcState.unserialize(cp);

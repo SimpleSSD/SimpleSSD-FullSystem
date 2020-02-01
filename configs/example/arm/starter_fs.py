@@ -44,6 +44,7 @@ at: http://www.arm.com/ResearchEnablement/SystemModeling
 """
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 import os
 import m5
@@ -55,6 +56,7 @@ import argparse
 m5.util.addToPath('../..')
 
 from common import SysPaths
+from common import ObjectList
 from common import MemConfig
 from common.cores.arm import HPI
 
@@ -102,7 +104,8 @@ def create(args):
     # Only simulate caches when using a timing CPU (e.g., the HPI model)
     want_caches = True if mem_mode == "timing" else False
 
-    system = devices.SimpleSystem(want_caches,
+    system = devices.simpleSystem(LinuxArmSystem,
+                                  want_caches,
                                   args.mem_size,
                                   mem_mode=mem_mode,
                                   kernel=SysPaths.binary(args.kernel),
@@ -145,7 +148,7 @@ def create(args):
         system.addCaches(want_caches, last_cache_level=2)
 
     # Setup gem5's minimal Linux boot loader.
-    system.realview.setupBootLoader(system.membus, system, SysPaths.binary)
+    system.realview.setupBootLoader(system, SysPaths.binary)
 
     if args.dtb:
         system.dtb_filename = args.dtb
@@ -213,7 +216,7 @@ def main():
     parser.add_argument("--num-cores", type=int, default=1,
                         help="Number of CPU cores")
     parser.add_argument("--mem-type", default="DDR3_1600_8x8",
-                        choices=MemConfig.mem_names(),
+                        choices=ObjectList.mem_list.get_names(),
                         help = "type of memory to use")
     parser.add_argument("--mem-channels", type=int, default=1,
                         help = "number of memory channels")

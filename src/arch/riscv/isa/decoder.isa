@@ -36,7 +36,7 @@
 
 decode QUADRANT default Unknown::unknown() {
     0x0: decode COPCODE {
-        0x0: CIOp::c_addi4spn({{
+        0x0: CIAddi4spnOp::c_addi4spn({{
             imm = CIMM8<1:1> << 2 |
                   CIMM8<0:0> << 3 |
                   CIMM8<7:6> << 4 |
@@ -197,7 +197,7 @@ decode QUADRANT default Unknown::unknown() {
                     Rp1 = Rp1 & imm;
                 }}, uint64_t);
             }
-            format ROp {
+            format CompressedROp {
                 0x3: decode CFUNCT1 {
                     0x0: decode CFUNCT2LOW {
                         0x0: c_sub({{
@@ -224,18 +224,9 @@ decode QUADRANT default Unknown::unknown() {
                 }
             }
         }
-        0x5: JOp::c_j({{
-            int64_t offset = CJUMPIMM<3:1> << 1 |
-                             CJUMPIMM<9:9> << 4 |
-                             CJUMPIMM<0:0> << 5 |
-                             CJUMPIMM<5:5> << 6 |
-                             CJUMPIMM<4:4> << 7 |
-                             CJUMPIMM<8:7> << 8 |
-                             CJUMPIMM<6:6> << 10;
-            if (CJUMPIMM<10:10> > 0)
-                offset |= ~((int64_t)0x7FF);
-            NPC = PC + offset;
-        }}, IsIndirectControl, IsUncondControl, IsCall);
+        0x5: CJOp::c_j({{
+            NPC = PC + imm;
+        }}, IsDirectControl, IsUncondControl);
         format CBOp {
             0x6: c_beqz({{
                 if (Rp1 == 0)
@@ -337,7 +328,7 @@ decode QUADRANT default Unknown::unknown() {
                         ra = NPC;
                         NPC = Rc1;
                     }}, IsIndirectControl, IsUncondControl, IsCall);
-                    default: ROp::c_add({{
+                    default: CompressedROp::c_add({{
                         Rc1_sd = Rc1_sd + Rc2_sd;
                     }});
                 }
@@ -409,7 +400,7 @@ decode QUADRANT default Unknown::unknown() {
         }
 
         0x03: decode FUNCT3 {
-            format IOp {
+            format FenceOp {
                 0x0: fence({{
                 }}, uint64_t, IsMemBarrier, No_OpClass);
                 0x1: fence_i({{
@@ -423,8 +414,8 @@ decode QUADRANT default Unknown::unknown() {
                     Rd_sd = Rs1_sd + imm;
                 }});
                 0x1: slli({{
-                    Rd = Rs1 << SHAMT6;
-                }});
+                    Rd = Rs1 << imm;
+                }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT6; }});
                 0x2: slti({{
                     Rd = (Rs1_sd < imm) ? 1 : 0;
                 }});
@@ -436,11 +427,11 @@ decode QUADRANT default Unknown::unknown() {
                 }}, uint64_t);
                 0x5: decode SRTYPE {
                     0x0: srli({{
-                        Rd = Rs1 >> SHAMT6;
-                    }});
+                        Rd = Rs1 >> imm;
+                    }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT6; }});
                     0x1: srai({{
-                        Rd_sd = Rs1_sd >> SHAMT6;
-                    }});
+                        Rd_sd = Rs1_sd >> imm;
+                    }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT6; }});
                 }
                 0x6: ori({{
                     Rd = Rs1 | imm;
@@ -452,7 +443,7 @@ decode QUADRANT default Unknown::unknown() {
         }
 
         0x05: UOp::auipc({{
-            Rd = PC + imm;
+            Rd = PC + (sext<20>(imm) << 12);
         }});
 
         0x06: decode FUNCT3 {
@@ -461,15 +452,15 @@ decode QUADRANT default Unknown::unknown() {
                     Rd_sd = Rs1_sw + imm;
                 }}, int32_t);
                 0x1: slliw({{
-                    Rd_sd = Rs1_sw << SHAMT5;
-                }});
+                    Rd_sd = Rs1_sw << imm;
+                }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT5; }});
                 0x5: decode SRTYPE {
                     0x0: srliw({{
-                        Rd_sd = (int32_t)(Rs1_uw >> SHAMT5);
-                    }});
+                        Rd_sd = (int32_t)(Rs1_uw >> imm);
+                    }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT5; }});
                     0x1: sraiw({{
-                        Rd_sd = Rs1_sw >> SHAMT5;
-                    }});
+                        Rd_sd = Rs1_sw >> imm;
+                    }}, imm_type = uint64_t, imm_code = {{ imm = SHAMT5; }});
                 }
             }
         }
@@ -796,7 +787,7 @@ decode QUADRANT default Unknown::unknown() {
         }
 
         0x0d: UOp::lui({{
-            Rd = (uint64_t)imm;
+            Rd = (uint64_t)(sext<20>(imm) << 12);
         }});
 
         0x0e: decode FUNCT3 {

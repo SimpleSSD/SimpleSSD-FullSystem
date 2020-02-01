@@ -131,7 +131,7 @@ FALRU::invalidate(CacheBlk *blk)
     BaseTags::invalidate(blk);
 
     // Decrease the number of tags in use
-    tagsInUse--;
+    stats.tagsInUse--;
 
     // Move the block to the tail to make it the next victim
     moveToTail((FALRUBlk*)blk);
@@ -196,8 +196,8 @@ FALRU::findBlockBySetAndWay(int set, int way) const
 }
 
 CacheBlk*
-FALRU::findVictim(Addr addr, const bool is_secure,
-                  std::vector<CacheBlk*>& evict_blks) const
+FALRU::findVictim(Addr addr, const bool is_secure, const std::size_t size,
+                  std::vector<CacheBlk*>& evict_blks)
 {
     // The victim is always stored on the tail for the FALRU
     FALRUBlk* victim = tail;
@@ -220,7 +220,7 @@ FALRU::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     BaseTags::insertBlock(pkt, blk);
 
     // Increment tag counter
-    tagsInUse++;
+    stats.tagsInUse++;
 
     // New block is the MRU
     moveToHead(falruBlk);

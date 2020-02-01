@@ -1,6 +1,6 @@
 /*
  * Copyright 2014 Google, Inc.
- * Copyright (c) 2010-2013,2015,2017 ARM Limited
+ * Copyright (c) 2010-2013,2015,2017-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -100,7 +100,7 @@ TimingSimpleCPU::drain()
         return DrainState::Drained;
 
     if (_status == Idle ||
-        (_status == BaseSimpleCPU::Running && isDrained())) {
+        (_status == BaseSimpleCPU::Running && isCpuDrained())) {
         DPRINTF(Drain, "No need to drain.\n");
         activeThreads.clear();
         return DrainState::Drained;
@@ -161,7 +161,7 @@ TimingSimpleCPU::tryCompleteDrain()
         return false;
 
     DPRINTF(Drain, "tryCompleteDrain.\n");
-    if (!isDrained())
+    if (!isCpuDrained())
         return false;
 
     DPRINTF(Drain, "CPU done draining, processing drain event\n");
@@ -417,7 +417,8 @@ TimingSimpleCPU::buildSplitPacket(PacketPtr &pkt1, PacketPtr &pkt2,
 
 Fault
 TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
-                                 Request::Flags flags)
+                                 Request::Flags flags,
+                                 const std::vector<bool>& byte_enable)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
@@ -434,6 +435,9 @@ TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
     RequestPtr req = std::make_shared<Request>(
         asid, addr, size, flags, dataMasterId(), pc,
         thread->contextId());
+    if (!byte_enable.empty()) {
+        req->setByteEnable(byte_enable);
+    }
 
     req->taskId(taskId());
 
@@ -491,7 +495,8 @@ TimingSimpleCPU::handleWritePacket()
 
 Fault
 TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
-                          Addr addr, Request::Flags flags, uint64_t *res)
+                          Addr addr, Request::Flags flags, uint64_t *res,
+                          const std::vector<bool>& byte_enable)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
@@ -516,6 +521,9 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
     RequestPtr req = std::make_shared<Request>(
         asid, addr, size, flags, dataMasterId(), pc,
         thread->contextId());
+    if (!byte_enable.empty()) {
+        req->setByteEnable(byte_enable);
+    }
 
     req->taskId(taskId());
 
@@ -523,6 +531,10 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
     assert(split_addr <= addr || split_addr - addr < block_size);
 
     _status = DTBWaitResponse;
+
+    // TODO: TimingSimpleCPU doesn't support arbitrarily long multi-line mem.
+    // accesses yet
+
     if (split_addr > addr) {
         RequestPtr req1, req2;
         assert(!req->isLLSC() && !req->isSwap());
@@ -552,7 +564,7 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
 Fault
 TimingSimpleCPU::initiateMemAMO(Addr addr, unsigned size,
                                 Request::Flags flags,
-                                AtomicOpFunctor *amo_op)
+                                AtomicOpFunctorPtr amo_op)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
@@ -567,7 +579,8 @@ TimingSimpleCPU::initiateMemAMO(Addr addr, unsigned size,
         traceData->setMem(addr, size, flags);
 
     RequestPtr req = make_shared<Request>(asid, addr, size, flags,
-                            dataMasterId(), pc, thread->contextId(), amo_op);
+                            dataMasterId(), pc, thread->contextId(),
+                            std::move(amo_op));
 
     assert(req->hasAtomicOpFunctor());
 

@@ -28,10 +28,15 @@
 # Authors: Brad Beckmann
 #          Tushar Krishna
 
+from __future__ import print_function
+from __future__ import absolute_import
+
 from m5.params import *
 from m5.objects import *
 
-from BaseTopology import SimpleTopology
+from common import FileSystemConfig
+
+from .BaseTopology import SimpleTopology
 
 # Creates a generic Mesh assuming an equal number of cache
 # and directory controllers.
@@ -171,3 +176,9 @@ class Mesh_XY(SimpleTopology):
 
 
         network.int_links = int_links
+
+    # Register nodes with filesystem
+    def registerTopology(self, options):
+        for i in xrange(options.num_cpus):
+            FileSystemConfig.register_node([i],
+                    MemorySize(options.mem_size) / options.num_cpus, i)

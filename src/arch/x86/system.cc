@@ -43,12 +43,12 @@
 
 #include "arch/x86/bios/intelmp.hh"
 #include "arch/x86/bios/smbios.hh"
+#include "arch/x86/faults.hh"
 #include "arch/x86/isa_traits.hh"
 #include "base/loader/object_file.hh"
 #include "cpu/thread_context.hh"
 #include "params/X86System.hh"
 
-using namespace LittleEndianGuest;
 using namespace X86ISA;
 
 X86System::X86System(Params *p) :
@@ -108,6 +108,19 @@ X86System::initState()
 {
     System::initState();
 
+    for (auto *tc: threadContexts) {
+        X86ISA::InitInterrupt(0).invoke(tc);
+
+        if (tc->contextId() == 0) {
+            tc->activate();
+        } else {
+            // This is an application processor (AP). It should be initialized
+            // to look like only the BIOS POST has run on it and put then put
+            // it into a halted state.
+            tc->suspend();
+        }
+    }
+
     if (!kernel)
         fatal("No kernel to load.\n");
 
@@ -141,8 +154,7 @@ X86System::initState()
     uint8_t numGDTEntries = 0;
     // Place holder at selector 0
     uint64_t nullDescriptor = 0;
-    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
-                        (uint8_t *)(&nullDescriptor), 8);
+    physProxy.writeBlob(GDTBase + numGDTEntries * 8, &nullDescriptor, 8);
     numGDTEntries++;
 
     SegDescriptor initDesc = 0;
@@ -167,8 +179,7 @@ X86System::initState()
     // it's beginning in memory and it's actual data, we'll use an
     // intermediary.
     uint64_t csDescVal = csDesc;
-    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
-                        (uint8_t *)(&csDescVal), 8);
+    physProxy.writeBlob(GDTBase + numGDTEntries * 8, (&csDescVal), 8);
 
     numGDTEntries++;
 
@@ -180,8 +191,7 @@ X86System::initState()
     // 32 bit data segment
     SegDescriptor dsDesc = initDesc;
     uint64_t dsDescVal = dsDesc;
-    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
-                        (uint8_t *)(&dsDescVal), 8);
+    physProxy.writeBlob(GDTBase + numGDTEntries * 8, (&dsDescVal), 8);
 
     numGDTEntries++;
 
@@ -200,8 +210,7 @@ X86System::initState()
 
     SegDescriptor tssDesc = initDesc;
     uint64_t tssDescVal = tssDesc;
-    physProxy.writeBlob(GDTBase + numGDTEntries * 8,
-                        (uint8_t *)(&tssDescVal), 8);
+    physProxy.writeBlob(GDTBase + numGDTEntries * 8, (&tssDescVal), 8);
 
     numGDTEntries++;
 
@@ -228,27 +237,24 @@ X86System::initState()
     // Page Map Level 4
 
     // read/write, user, not present
-    uint64_t pml4e = X86ISA::htog(0x6);
+    uint64_t pml4e = htole<uint64_t>(0x6);
     for (int offset = 0; offset < (1 << PML4Bits) * 8; offset += 8) {
-        physProxy.writeBlob(PageMapLevel4 + offset, (uint8_t *)(&pml4e), 8);
+        physProxy.writeBlob(PageMapLevel4 + offset, (&pml4e), 8);
     }
     // Point to the only PDPT
-    pml4e = X86ISA::htog(0x7 | PageDirPtrTable);
-    physProxy.writeBlob(PageMapLevel4, (uint8_t *)(&pml4e), 8);
+    pml4e = htole<uint64_t>(0x7 | PageDirPtrTable);
+    physProxy.writeBlob(PageMapLevel4, (&pml4e), 8);
 
     // Page Directory Pointer Table
 
     // read/write, user, not present
-    uint64_t pdpe = X86ISA::htog(0x6);
-    for (int offset = 0; offset < (1 << PDPTBits) * 8; offset += 8) {
-        physProxy.writeBlob(PageDirPtrTable + offset,
-                            (uint8_t *)(&pdpe), 8);
-    }
+    uint64_t pdpe = htole<uint64_t>(0x6);
+    for (int offset = 0; offset < (1 << PDPTBits) * 8; offset += 8)
+        physProxy.writeBlob(PageDirPtrTable + offset, &pdpe, 8);
     // Point to the PDTs
     for (int table = 0; table < NumPDTs; table++) {
-        pdpe = X86ISA::htog(0x7 | PageDirTable[table]);
-        physProxy.writeBlob(PageDirPtrTable + table * 8,
-                            (uint8_t *)(&pdpe), 8);
+        pdpe = htole<uint64_t>(0x7 | PageDirTable[table]);
+        physProxy.writeBlob(PageDirPtrTable + table * 8, &pdpe, 8);
     }
 
     // Page Directory Tables
@@ -258,9 +264,8 @@ X86System::initState()
     for (int table = 0; table < NumPDTs; table++) {
         for (int offset = 0; offset < (1 << PDTBits) * 8; offset += 8) {
             // read/write, user, present, 4MB
-            uint64_t pdte = X86ISA::htog(0x87 | base);
-            physProxy.writeBlob(PageDirTable[table] + offset,
-                                (uint8_t *)(&pdte), 8);
+            uint64_t pdte = htole(0x87 | base);
+            physProxy.writeBlob(PageDirTable[table] + offset, &pdte, 8);
             base += pageSize;
         }
     }

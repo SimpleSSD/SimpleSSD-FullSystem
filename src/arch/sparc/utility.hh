@@ -62,23 +62,6 @@ inUserMode(ThreadContext *tc)
     return !(pstate.priv || hpstate.hpriv);
 }
 
-/**
- * Function to insure ISA semantics about 0 registers.
- * @param tc The thread context.
- */
-template <class TC>
-void zeroRegisters(TC *tc);
-
-void initCPU(ThreadContext *tc, int cpuId);
-
-inline void
-startupCPU(ThreadContext *tc, int cpuId)
-{
-    // Other CPUs will get activated by IPIs
-    if (cpuId == 0 || !FullSystem)
-        tc->activate();
-}
-
 void copyRegs(ThreadContext *src, ThreadContext *dest);
 
 void copyMiscRegs(ThreadContext *src, ThreadContext *dest);

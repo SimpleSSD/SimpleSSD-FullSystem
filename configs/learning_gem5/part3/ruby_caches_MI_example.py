@@ -29,7 +29,8 @@
 
 """ This file creates a set of Ruby caches, the Ruby network, and a simple
 point-to-point topology.
-See Part 3 in the Learning gem5 book: learning.gem5.org/book/part3
+See Part 3 in the Learning gem5 book:
+http://gem5.org/Documentation/learning_gem5/part3/MSIintro
 You can change simple_ruby to import from this file instead of from msi_caches
 to use the MI_example protocol instead of MSI.
 
@@ -37,6 +38,9 @@ IMPORTANT: If you modify this file, it's likely that the Learning gem5 book
            also needs to be updated. For now, email Jason <jason@lowepower.com>
 
 """
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import math
 

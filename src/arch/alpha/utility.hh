@@ -58,17 +58,8 @@ inUserMode(ThreadContext *tc)
     return (tc->readMiscRegNoEffect(IPR_DTB_CM) & 0x18) != 0;
 }
 
-/**
- * Function to insure ISA semantics about 0 registers.
- * @param tc The thread context.
- */
-template <class TC>
-void zeroRegisters(TC *tc);
-
 // Alpha IPR register accessors
 inline bool PcPAL(Addr addr) { return addr & 0x3; }
-inline void startupCPU(ThreadContext *tc, int cpuId)
-{ tc->activate(); }
 
 ////////////////////////////////////////////////////////////////////////
 //
@@ -96,7 +87,6 @@ RoundPage(Addr addr)
 { return (addr + PageBytes - 1) & ~(PageBytes - 1); }
 
 void initIPRs(ThreadContext *tc, int cpuId);
-void initCPU(ThreadContext *tc, int cpuId);
 
 void copyRegs(ThreadContext *src, ThreadContext *dest);
 

@@ -34,6 +34,7 @@
 #include <set>
 #include <sstream>
 
+#include "arch/riscv/interrupts.hh"
 #include "arch/riscv/registers.hh"
 #include "base/bitfield.hh"
 #include "cpu/base.hh"
@@ -112,6 +113,8 @@ RegVal
 ISA::readMiscReg(int misc_reg, ThreadContext *tc)
 {
     switch (misc_reg) {
+      case MISCREG_HARTID:
+        return tc->contextId();
       case MISCREG_CYCLE:
         if (hpmCounterEnabled(MISCREG_CYCLE)) {
             DPRINTF(RiscvMisc, "Cycle counter at: %llu.\n",
@@ -140,11 +143,17 @@ ISA::readMiscReg(int misc_reg, ThreadContext *tc)
             return 0;
         }
       case MISCREG_IP:
-        return tc->getCpuPtr()->getInterruptController(tc->threadId())
-                              ->readIP();
+        {
+            auto ic = dynamic_cast<RiscvISA::Interrupts *>(
+                    tc->getCpuPtr()->getInterruptController(tc->threadId()));
+            return ic->readIP();
+        }
       case MISCREG_IE:
-        return tc->getCpuPtr()->getInterruptController(tc->threadId())
-                              ->readIE();
+        {
+            auto ic = dynamic_cast<RiscvISA::Interrupts *>(
+                    tc->getCpuPtr()->getInterruptController(tc->threadId()));
+            return ic->readIE();
+        }
       default:
         // Try reading HPM counters
         // As a placeholder, all HPM counters are just cycle counters
@@ -183,11 +192,19 @@ ISA::setMiscReg(int misc_reg, RegVal val, ThreadContext *tc)
     } else {
         switch (misc_reg) {
           case MISCREG_IP:
-            return tc->getCpuPtr()->getInterruptController(tc->threadId())
-                                  ->setIP(val);
+            {
+                auto ic = dynamic_cast<RiscvISA::Interrupts *>(
+                    tc->getCpuPtr()->getInterruptController(tc->threadId()));
+                ic->setIP(val);
+            }
+            break;
           case MISCREG_IE:
-            return tc->getCpuPtr()->getInterruptController(tc->threadId())
-                                  ->setIE(val);
+            {
+                auto ic = dynamic_cast<RiscvISA::Interrupts *>(
+                    tc->getCpuPtr()->getInterruptController(tc->threadId()));
+                ic->setIE(val);
+            }
+            break;
           default:
             setMiscRegNoEffect(misc_reg, val);
         }

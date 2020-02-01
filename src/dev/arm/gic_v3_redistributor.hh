@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2019 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2018 Metempsy Technology Consulting
  * All rights reserved.
  *
@@ -37,6 +49,7 @@
 
 class Gicv3CPUInterface;
 class Gicv3Distributor;
+class Gicv3Its;
 
 class Gicv3Redistributor : public Serializable
 {
@@ -44,6 +57,7 @@ class Gicv3Redistributor : public Serializable
 
     friend class Gicv3CPUInterface;
     friend class Gicv3Distributor;
+    friend class Gicv3Its;
 
   protected:
 
@@ -51,6 +65,7 @@ class Gicv3Redistributor : public Serializable
     Gicv3Distributor * distributor;
     Gicv3CPUInterface * cpuInterface;
     uint32_t cpuId;
+    PortProxy * memProxy;
 
     /*
      * GICv3 defines 2 contiguous 64KB frames for each redistributor.
@@ -161,8 +176,6 @@ class Gicv3Redistributor : public Serializable
         Bitfield<0> enable;
     EndBitUnion(LPIConfigurationTableEntry)
 
-    std::vector<LPIConfigurationTableEntry> lpiConfigurationTable;
-
     static const uint32_t GICR_CTLR_ENABLE_LPIS = 1 << 0;
     static const uint32_t GICR_CTLR_DPG0   = 1 << 24;
     static const uint32_t GICR_CTLR_DPG1NS = 1 << 25;
@@ -177,7 +190,7 @@ class Gicv3Redistributor : public Serializable
      * Note this must match with DTB/DTS GIC node definition and boot
      * loader code.
      */
-    static const uint32_t ADDR_RANGE_SIZE = 0x40000;
+    const uint32_t addrRangeSize;
 
     static const uint32_t SMALLEST_LPI_ID = 8192;
 
@@ -192,23 +205,29 @@ class Gicv3Redistributor : public Serializable
         return cpuInterface;
     }
 
+    uint32_t
+    processorNumber() const
+    {
+        return cpuId;
+    }
+
     Gicv3::GroupId getIntGroup(int int_id) const;
     Gicv3::IntStatus intStatus(uint32_t int_id) const;
+    uint8_t readEntryLPI(uint32_t intid);
+    void writeEntryLPI(uint32_t intid, uint8_t lpi_entry);
+    bool isPendingLPI(uint32_t intid);
     void setClrLPI(uint64_t data, bool set);
-    void reset();
     void sendSGI(uint32_t int_id, Gicv3::GroupId group, bool ns);
     void serialize(CheckpointOut & cp) const override;
     void unserialize(CheckpointIn & cp) override;
     void update();
-    void updateAndInformCPUInterface();
+    void updateDistributor();
 
   public:
 
     Gicv3Redistributor(Gicv3 * gic, uint32_t cpu_id);
-    void invalLpiConfig(uint32_t lpi_entry_index);
     uint32_t getAffinity() const;
     void init();
-    void initState();
     uint64_t read(Addr addr, size_t size, bool is_secure_access);
     void sendPPInt(uint32_t int_id);
     void write(Addr addr, uint64_t data, size_t size, bool is_secure_access);

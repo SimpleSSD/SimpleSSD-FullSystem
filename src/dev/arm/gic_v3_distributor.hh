@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2019 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2018 Metempsy Technology Consulting
  * All rights reserved.
  *
@@ -41,6 +53,7 @@ class Gicv3Distributor : public Serializable
 
     friend class Gicv3Redistributor;
     friend class Gicv3CPUInterface;
+    friend class Gicv3Its;
 
   protected:
 
@@ -56,6 +69,16 @@ class Gicv3Distributor : public Serializable
         GICD_IIDR = 0x0008,
         // Error Reporting Status Register
         GICD_STATUSR = 0x0010,
+        // Set Non-secure SPI Pending Register
+        GICD_SETSPI_NSR = 0x0040,
+        // Clear Non-secure SPI Pending Register
+        GICD_CLRSPI_NSR = 0x0048,
+        // Set Secure SPI Pending Register
+        GICD_SETSPI_SR = 0x0050,
+        // Clear Secure SPI Pending Register
+        GICD_CLRSPI_SR = 0x0058,
+        // Software Generated Interrupt Register
+        GICD_SGIR = 0x0f00,
         // Peripheral ID0 Register
         GICD_PIDR0 = 0xffe0,
         // Peripheral ID1 Register
@@ -137,9 +160,17 @@ class Gicv3Distributor : public Serializable
     std::vector <uint8_t> irqNsacr;
     std::vector <IROUTER> irqAffinityRouting;
 
+    uint32_t gicdTyper;
+    uint32_t gicdPidr0;
+    uint32_t gicdPidr1;
+    uint32_t gicdPidr2;
+    uint32_t gicdPidr3;
+    uint32_t gicdPidr4;
+
   public:
 
     static const uint32_t ADDR_RANGE_SIZE = 0x10000;
+    static const uint32_t IDBITS = 0xf;
 
   protected:
 
@@ -184,7 +215,7 @@ class Gicv3Distributor : public Serializable
 
     Gicv3::IntStatus intStatus(uint32_t int_id) const;
 
-    inline bool isNotSPI(uint8_t int_id) const
+    inline bool isNotSPI(uint32_t int_id) const
     {
         if (int_id < (Gicv3::SGI_MAX + Gicv3::PPI_MAX) || int_id >= itLines) {
             return true;
@@ -193,24 +224,23 @@ class Gicv3Distributor : public Serializable
         }
     }
 
-    inline bool nsAccessToSecInt(uint8_t int_id, bool is_secure_access) const
+    inline bool nsAccessToSecInt(uint32_t int_id, bool is_secure_access) const
     {
         return !DS && !is_secure_access && getIntGroup(int_id) != Gicv3::G1NS;
     }
 
-    void reset();
     void serialize(CheckpointOut & cp) const override;
     void unserialize(CheckpointIn & cp) override;
     void update();
-    void updateAndInformCPUInterfaces();
+    Gicv3CPUInterface* route(uint32_t int_id);
 
   public:
 
     Gicv3Distributor(Gicv3 * gic, uint32_t it_lines);
 
     void deassertSPI(uint32_t int_id);
+    void clearIrqCpuInterface(uint32_t int_id);
     void init();
-    void initState();
     uint64_t read(Addr addr, size_t size, bool is_secure_access);
     void sendInt(uint32_t int_id);
     void write(Addr addr, uint64_t data, size_t size,

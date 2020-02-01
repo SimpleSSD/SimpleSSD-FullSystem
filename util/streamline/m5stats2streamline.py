@@ -42,7 +42,6 @@
 # This script converts gem5 output to ARM DS-5 Streamline .apc project file
 # (Requires the gem5 runs to be run with ContextSwitchStatsDump enabled and
 # some patches applied to target Linux kernel.)
-# Visit http://www.gem5.org/Streamline for more details.
 #
 # Usage:
 # m5stats2streamline.py <stat_config.ini> <gem5 run folder> <dest .apc folder>
@@ -164,7 +163,7 @@ def parseConfig(config_file):
     icl_cpus = 0
     while config.has_section("system.pci_nvme.cpu.icl" + str(hil_cpus)):
         hil_cpus += 1
-    
+
     ftl_cpus = 0
     while config.has_section("system.pci_nvme.cpu.ftl" + str(hil_cpus)):
         hil_cpus += 1

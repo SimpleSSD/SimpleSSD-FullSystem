@@ -38,6 +38,7 @@
 
 #include "arch/riscv/isa_traits.hh"
 #include "arch/riscv/linux/linux.hh"
+#include "base/loader/object_file.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
 #include "debug/SyscallVerbose.hh"
@@ -51,39 +52,73 @@
 using namespace std;
 using namespace RiscvISA;
 
+namespace
+{
+
+class RiscvLinuxObjectFileLoader : public Process::Loader
+{
+  public:
+    Process *
+    load(ProcessParams *params, ObjectFile *obj_file) override
+    {
+        auto arch = obj_file->getArch();
+        auto opsys = obj_file->getOpSys();
+
+        if (arch != ObjectFile::Riscv64 && arch != ObjectFile::Riscv32)
+            return nullptr;
+
+        if (opsys == ObjectFile::UnknownOpSys) {
+            warn("Unknown operating system; assuming Linux.");
+            opsys = ObjectFile::Linux;
+        }
+
+        if (opsys != ObjectFile::Linux)
+            return nullptr;
+
+        if (arch == ObjectFile::Riscv64)
+            return new RiscvLinuxProcess64(params, obj_file);
+        else
+            return new RiscvLinuxProcess32(params, obj_file);
+    }
+};
+
+RiscvLinuxObjectFileLoader loader;
+
+} // anonymous namespace
+
 /// Target uname() handler.
 static SyscallReturn
-unameFunc64(SyscallDesc *desc, int callnum, Process *process,
-          ThreadContext *tc)
+unameFunc64(SyscallDesc *desc, int callnum, ThreadContext *tc)
 {
     int index = 0;
+    auto process = tc->getProcessPtr();
     TypedBufferArg<Linux::utsname> name(process->getSyscallArg(tc, index));
 
     strcpy(name->sysname, "Linux");
     strcpy(name->nodename,"sim.gem5.org");
-    strcpy(name->release, "3.0.0");
+    strcpy(name->release, process->release.c_str());
     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
     strcpy(name->machine, "riscv64");
 
-    name.copyOut(tc->getMemProxy());
+    name.copyOut(tc->getVirtProxy());
     return 0;
 }
 
 /// Target uname() handler.
 static SyscallReturn
-unameFunc32(SyscallDesc *desc, int callnum, Process *process,
-            ThreadContext *tc)
+unameFunc32(SyscallDesc *desc, int callnum, ThreadContext *tc)
 {
     int index = 0;
+    auto process = tc->getProcessPtr();
     TypedBufferArg<Linux::utsname> name(process->getSyscallArg(tc, index));
 
     strcpy(name->sysname, "Linux");
     strcpy(name->nodename,"sim.gem5.org");
-    strcpy(name->release, "3.0.0");
+    strcpy(name->release, process->release.c_str());
     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
     strcpy(name->machine, "riscv32");
 
-    name.copyOut(tc->getMemProxy());
+    name.copyOut(tc->getVirtProxy());
     return 0;
 }
 
@@ -186,9 +221,9 @@ std::map<int, SyscallDesc> RiscvLinuxProcess64::syscallDescs = {
     {96,   SyscallDesc("set_tid_address", setTidAddressFunc)},
     {97,   SyscallDesc("unshare")},
     {98,   SyscallDesc("futex", futexFunc<RiscvLinux64>)},
-    {99,   SyscallDesc("set_robust_list", ignoreFunc, SyscallDesc::WarnOnce)},
-    {100,  SyscallDesc("get_robust_list", ignoreFunc, SyscallDesc::WarnOnce)},
-    {101,  SyscallDesc("nanosleep", ignoreFunc, SyscallDesc::WarnOnce)},
+    {99,   SyscallDesc("set_robust_list", ignoreWarnOnceFunc)},
+    {100,  SyscallDesc("get_robust_list", ignoreWarnOnceFunc)},
+    {101,  SyscallDesc("nanosleep", ignoreWarnOnceFunc)},
     {102,  SyscallDesc("getitimer")},
     {103,  SyscallDesc("setitimer")},
     {104,  SyscallDesc("kexec_load")},
@@ -211,7 +246,7 @@ std::map<int, SyscallDesc> RiscvLinuxProcess64::syscallDescs = {
     {121,  SyscallDesc("sched_getparam")},
     {122,  SyscallDesc("sched_setaffinity")},
     {123,  SyscallDesc("sched_getaffinity")},
-    {124,  SyscallDesc("sched_yield", ignoreFunc, SyscallDesc::WarnOnce)},
+    {124,  SyscallDesc("sched_yield", ignoreWarnOnceFunc)},
     {125,  SyscallDesc("sched_get_priority_max")},
     {126,  SyscallDesc("sched_get_priority_min")},
     {127,  SyscallDesc("scheD_rr_get_interval")},
@@ -220,13 +255,13 @@ std::map<int, SyscallDesc> RiscvLinuxProcess64::syscallDescs = {
     {130,  SyscallDesc("tkill")},
     {131,  SyscallDesc("tgkill", tgkillFunc<RiscvLinux64>)},
     {132,  SyscallDesc("sigaltstack")},
-    {133,  SyscallDesc("rt_sigsuspend", ignoreFunc, SyscallDesc::WarnOnce)},
-    {134,  SyscallDesc("rt_sigaction", ignoreFunc, SyscallDesc::WarnOnce)},
-    {135,  SyscallDesc("rt_sigprocmask", ignoreFunc, SyscallDesc::WarnOnce)},
-    {136,  SyscallDesc("rt_sigpending", ignoreFunc, SyscallDesc::WarnOnce)},
-    {137,  SyscallDesc("rt_sigtimedwait", ignoreFunc,SyscallDesc::WarnOnce)},
-    {138,  SyscallDesc("rt_sigqueueinfo", ignoreFunc,SyscallDesc::WarnOnce)},
-    {139,  SyscallDesc("rt_sigreturn", ignoreFunc, SyscallDesc::WarnOnce)},
+    {133,  SyscallDesc("rt_sigsuspend", ignoreWarnOnceFunc)},
+    {134,  SyscallDesc("rt_sigaction", ignoreWarnOnceFunc)},
+    {135,  SyscallDesc("rt_sigprocmask", ignoreWarnOnceFunc)},
+    {136,  SyscallDesc("rt_sigpending", ignoreWarnOnceFunc)},
+    {137,  SyscallDesc("rt_sigtimedwait", ignoreWarnOnceFunc)},
+    {138,  SyscallDesc("rt_sigqueueinfo", ignoreWarnOnceFunc)},
+    {139,  SyscallDesc("rt_sigreturn", ignoreWarnOnceFunc)},
     {140,  SyscallDesc("setpriority")},
     {141,  SyscallDesc("getpriority")},
     {142,  SyscallDesc("reboot")},
@@ -517,8 +552,8 @@ std::map<int, SyscallDesc> RiscvLinuxProcess32::syscallDescs = {
     {96,   SyscallDesc("set_tid_address", setTidAddressFunc)},
     {97,   SyscallDesc("unshare")},
     {98,   SyscallDesc("futex", futexFunc<RiscvLinux32>)},
-    {99,   SyscallDesc("set_robust_list", ignoreFunc, SyscallDesc::WarnOnce)},
-    {100,  SyscallDesc("get_robust_list", ignoreFunc, SyscallDesc::WarnOnce)},
+    {99,   SyscallDesc("set_robust_list", ignoreWarnOnceFunc)},
+    {100,  SyscallDesc("get_robust_list", ignoreWarnOnceFunc)},
     {101,  SyscallDesc("nanosleep")},
     {102,  SyscallDesc("getitimer")},
     {103,  SyscallDesc("setitimer")},
@@ -542,7 +577,7 @@ std::map<int, SyscallDesc> RiscvLinuxProcess32::syscallDescs = {
     {121,  SyscallDesc("sched_getparam")},
     {122,  SyscallDesc("sched_setaffinity")},
     {123,  SyscallDesc("sched_getaffinity")},
-    {124,  SyscallDesc("sched_yield", ignoreFunc, SyscallDesc::WarnOnce)},
+    {124,  SyscallDesc("sched_yield", ignoreWarnOnceFunc)},
     {125,  SyscallDesc("sched_get_priority_max")},
     {126,  SyscallDesc("sched_get_priority_min")},
     {127,  SyscallDesc("scheD_rr_get_interval")},
@@ -551,13 +586,13 @@ std::map<int, SyscallDesc> RiscvLinuxProcess32::syscallDescs = {
     {130,  SyscallDesc("tkill")},
     {131,  SyscallDesc("tgkill", tgkillFunc<RiscvLinux32>)},
     {132,  SyscallDesc("sigaltstack")},
-    {133,  SyscallDesc("rt_sigsuspend", ignoreFunc, SyscallDesc::WarnOnce)},
-    {134,  SyscallDesc("rt_sigaction", ignoreFunc, SyscallDesc::WarnOnce)},
-    {135,  SyscallDesc("rt_sigprocmask", ignoreFunc, SyscallDesc::WarnOnce)},
-    {136,  SyscallDesc("rt_sigpending", ignoreFunc, SyscallDesc::WarnOnce)},
-    {137,  SyscallDesc("rt_sigtimedwait", ignoreFunc,SyscallDesc::WarnOnce)},
-    {138,  SyscallDesc("rt_sigqueueinfo", ignoreFunc,SyscallDesc::WarnOnce)},
-    {139,  SyscallDesc("rt_sigreturn", ignoreFunc, SyscallDesc::WarnOnce)},
+    {133,  SyscallDesc("rt_sigsuspend", ignoreWarnOnceFunc)},
+    {134,  SyscallDesc("rt_sigaction", ignoreWarnOnceFunc)},
+    {135,  SyscallDesc("rt_sigprocmask", ignoreWarnOnceFunc)},
+    {136,  SyscallDesc("rt_sigpending", ignoreWarnOnceFunc)},
+    {137,  SyscallDesc("rt_sigtimedwait", ignoreWarnOnceFunc)},
+    {138,  SyscallDesc("rt_sigqueueinfo", ignoreWarnOnceFunc)},
+    {139,  SyscallDesc("rt_sigreturn", ignoreWarnOnceFunc)},
     {140,  SyscallDesc("setpriority")},
     {141,  SyscallDesc("getpriority")},
     {142,  SyscallDesc("reboot")},
@@ -760,6 +795,12 @@ RiscvLinuxProcess64::getDesc(int callnum)
         &syscallDescs.at(callnum) : nullptr;
 }
 
+void
+RiscvLinuxProcess64::syscall(ThreadContext *tc, Fault *fault)
+{
+    doSyscall(tc->readIntReg(SyscallNumReg), tc, fault);
+}
+
 RiscvLinuxProcess32::RiscvLinuxProcess32(ProcessParams * params,
     ObjectFile *objFile) : RiscvProcess32(params, objFile)
 {}
@@ -769,4 +810,10 @@ RiscvLinuxProcess32::getDesc(int callnum)
 {
     return syscallDescs.find(callnum) != syscallDescs.end() ?
         &syscallDescs.at(callnum) : nullptr;
+}
+
+void
+RiscvLinuxProcess32::syscall(ThreadContext *tc, Fault *fault)
+{
+    doSyscall(tc->readIntReg(SyscallNumReg), tc, fault);
 }

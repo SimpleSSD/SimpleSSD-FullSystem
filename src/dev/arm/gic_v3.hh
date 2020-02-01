@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2019 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2018 Metempsy Technology Consulting
  * All rights reserved.
  *
@@ -37,18 +49,23 @@
 class Gicv3CPUInterface;
 class Gicv3Distributor;
 class Gicv3Redistributor;
+class Gicv3Its;
 
 class Gicv3 : public BaseGic
 {
   protected:
+    friend class Gicv3CPUInterface;
+    friend class Gicv3Redistributor;
 
     typedef Gicv3Params Params;
     Gicv3Distributor * distributor;
     std::vector<Gicv3Redistributor *> redistributors;
     std::vector<Gicv3CPUInterface *> cpuInterfaces;
+    Gicv3Its * its;
     AddrRange distRange;
     AddrRange redistRange;
     AddrRangeList addrRanges;
+    uint64_t redistSize;
 
   public:
 
@@ -94,7 +111,6 @@ class Gicv3 : public BaseGic
     }
 
     void init() override;
-    void initState() override;
 
     const Params *
     params() const
@@ -109,6 +125,7 @@ class Gicv3 : public BaseGic
     void serialize(CheckpointOut & cp) const override;
     void unserialize(CheckpointIn & cp) override;
     Tick write(PacketPtr pkt) override;
+    bool supportsVersion(GicVersion version) override;
 
   public:
 
@@ -138,6 +155,10 @@ class Gicv3 : public BaseGic
 
     Gicv3Redistributor *
     getRedistributorByAffinity(uint32_t affinity) const;
+
+    Gicv3Redistributor *
+    getRedistributorByAddr(Addr address) const;
+
     void postInt(uint32_t cpu, ArmISA::InterruptTypes int_type);
 };
 

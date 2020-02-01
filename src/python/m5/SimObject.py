@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 ARM Limited
+# Copyright (c) 2017-2019 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -171,10 +171,6 @@ def createCxxConfigDirectoryEntryFile(code, name, simobj, is_header):
         code('#include "%s"' % simobj._value_dict['cxx_header'])
         code('#include "base/str.hh"')
         code('#include "cxx_config/${name}.hh"')
-
-        if simobj._ports:
-            code('#include "mem/mem_object.hh"')
-            code('#include "mem/port.hh"')
 
         code()
         code('${member_prefix}DirectoryEntry::DirectoryEntry()');
@@ -415,6 +411,7 @@ class MetaSimObject(type):
         'cxx_extra_bases' : list,
         'cxx_exports' : list,
         'cxx_param_exports' : list,
+        'cxx_template_params' : list,
     }
     # Attributes that can be set any time
     keywords = { 'check' : FunctionType }
@@ -454,6 +451,8 @@ class MetaSimObject(type):
             value_dict['cxx_exports'] += cxx_exports
         if 'cxx_param_exports' not in value_dict:
             value_dict['cxx_param_exports'] = []
+        if 'cxx_template_params' not in value_dict:
+            value_dict['cxx_template_params'] = []
         cls_dict['_value_dict'] = value_dict
         cls = super(MetaSimObject, mcls).__new__(mcls, name, bases, cls_dict)
         if 'type' in value_dict:
@@ -656,17 +655,26 @@ class MetaSimObject(type):
         if attr == 'cxx_namespaces':
             return cls.cxx_class_path[:-1]
 
+        if attr == 'pybind_class':
+            return  '_COLONS_'.join(cls.cxx_class_path)
+
         if attr in cls._values:
             return cls._values[attr]
 
         if attr in cls._children:
             return cls._children[attr]
 
-        raise AttributeError(
-              "object '%s' has no attribute '%s'" % (cls.__name__, attr))
+        try:
+            return getattr(cls.getCCClass(), attr)
+        except AttributeError:
+            raise AttributeError(
+                "object '%s' has no attribute '%s'" % (cls.__name__, attr))
 
     def __str__(cls):
         return cls.__name__
+
+    def getCCClass(cls):
+        return getattr(m5.internal.params, cls.pybind_class)
 
     # See ParamValue.cxx_predecls for description.
     def cxx_predecls(cls, code):
@@ -676,10 +684,7 @@ class MetaSimObject(type):
         code('#include "${{cls.cxx_header}}"')
 
     def pybind_decl(cls, code):
-        class_path = cls.cxx_class.split('::')
-        namespaces, classname = class_path[:-1], class_path[-1]
-        py_class_name = '_COLONS_'.join(class_path) if namespaces else \
-                        classname;
+        py_class_name = cls.pybind_class
 
         # The 'local' attribute restricts us to the params declared in
         # the object itself, not including inherited params (which
@@ -773,6 +778,7 @@ module_init(py::module &m_internal)
         code('static EmbeddedPyBind embed_obj("${0}", module_init, "${1}");',
              cls, cls._base.type if cls._base else "")
 
+    _warned_about_nested_templates = False
 
     # Generate the C++ declaration (.hh file) for this SimObject's
     # param struct.  Called from src/SConscript.
@@ -790,7 +796,78 @@ module_init(py::module &m_internal)
             print(params)
             raise
 
-        class_path = cls._value_dict['cxx_class'].split('::')
+        class CxxClass(object):
+            def __init__(self, sig, template_params=[]):
+                # Split the signature into its constituent parts. This could
+                # potentially be done with regular expressions, but
+                # it's simple enough to pick appart a class signature
+                # manually.
+                parts = sig.split('<', 1)
+                base = parts[0]
+                t_args = []
+                if len(parts) > 1:
+                    # The signature had template arguments.
+                    text = parts[1].rstrip(' \t\n>')
+                    arg = ''
+                    # Keep track of nesting to avoid splitting on ","s embedded
+                    # in the arguments themselves.
+                    depth = 0
+                    for c in text:
+                        if c == '<':
+                            depth = depth + 1
+                            if depth > 0 and not \
+                                    self._warned_about_nested_templates:
+                                self._warned_about_nested_templates = True
+                                print('Nested template argument in cxx_class.'
+                                      ' This feature is largely untested and '
+                                      ' may not work.')
+                        elif c == '>':
+                            depth = depth - 1
+                        elif c == ',' and depth == 0:
+                            t_args.append(arg.strip())
+                            arg = ''
+                        else:
+                            arg = arg + c
+                    if arg:
+                        t_args.append(arg.strip())
+                # Split the non-template part on :: boundaries.
+                class_path = base.split('::')
+
+                # The namespaces are everything except the last part of the
+                # class path.
+                self.namespaces = class_path[:-1]
+                # And the class name is the last part.
+                self.name = class_path[-1]
+
+                self.template_params = template_params
+                self.template_arguments = []
+                # Iterate through the template arguments and their values. This
+                # will likely break if parameter packs are used.
+                for arg, param in zip(t_args, template_params):
+                    type_keys = ('class', 'typename')
+                    # If a parameter is a type, parse it recursively. Otherwise
+                    # assume it's a constant, and store it verbatim.
+                    if any(param.strip().startswith(kw) for kw in type_keys):
+                        self.template_arguments.append(CxxClass(arg))
+                    else:
+                        self.template_arguments.append(arg)
+
+            def declare(self, code):
+                # First declare any template argument types.
+                for arg in self.template_arguments:
+                    if isinstance(arg, CxxClass):
+                        arg.declare(code)
+                # Re-open the target namespace.
+                for ns in self.namespaces:
+                    code('namespace $ns {')
+                # If this is a class template...
+                if self.template_params:
+                    code('template <${{", ".join(self.template_params)}}>')
+                # The actual class declaration.
+                code('class ${{self.name}};')
+                # Close the target namespaces.
+                for ns in reversed(self.namespaces):
+                    code('} // namespace $ns')
 
         code('''\
 #ifndef __PARAMS__${cls}__
@@ -806,14 +883,12 @@ module_init(py::module &m_internal)
         if cls == SimObject:
             code('''#include <string>''')
 
+        cxx_class = CxxClass(cls._value_dict['cxx_class'],
+                             cls._value_dict['cxx_template_params'])
+
         # A forward class declaration is sufficient since we are just
         # declaring a pointer.
-        for ns in class_path[:-1]:
-            code('namespace $ns {')
-        code('class $0;', class_path[-1])
-        for ns in reversed(class_path[:-1]):
-            code('} // namespace $ns')
-        code()
+        cxx_class.declare(code)
 
         for param in params:
             param.cxx_predecls(code)
@@ -882,6 +957,8 @@ def cxxMethod(*args, **kwargs):
         name = func.__name__
         override = kwargs.get("override", False)
         cxx_name = kwargs.get("cxx_name", name)
+        return_value_policy = kwargs.get("return_value_policy", None)
+        static = kwargs.get("static", False)
 
         args, varargs, keywords, defaults = inspect.getargspec(func)
         if varargs or keywords:
@@ -898,7 +975,7 @@ def cxxMethod(*args, **kwargs):
 
         @wraps(func)
         def cxx_call(self, *args, **kwargs):
-            ccobj = self.getCCObject()
+            ccobj = self.getCCClass() if static else self.getCCObject()
             return getattr(ccobj, name)(*args, **kwargs)
 
         @wraps(func)
@@ -906,7 +983,9 @@ def cxxMethod(*args, **kwargs):
             return func(self, *args, **kwargs)
 
         f = py_call if override else cxx_call
-        f.__pybind = PyBindMethod(name, cxx_name=cxx_name, args=args)
+        f.__pybind = PyBindMethod(name, cxx_name=cxx_name, args=args,
+                                  return_value_policy=return_value_policy,
+                                  static=static)
 
         return f
 
@@ -1007,7 +1086,7 @@ class SimObject(object):
     abstract = True
 
     cxx_header = "sim/sim_object.hh"
-    cxx_extra_bases = [ "Drainable", "Serializable" ]
+    cxx_extra_bases = [ "Drainable", "Serializable", "Stats::Group" ]
     eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
 
     cxx_exports = [
@@ -1015,8 +1094,6 @@ class SimObject(object):
         PyBindMethod("initState"),
         PyBindMethod("memInvalidate"),
         PyBindMethod("memWriteback"),
-        PyBindMethod("regStats"),
-        PyBindMethod("resetStats"),
         PyBindMethod("regProbePoints"),
         PyBindMethod("regProbeListeners"),
         PyBindMethod("startup"),
@@ -1336,6 +1413,13 @@ class SimObject(object):
             return self._name
         return ppath + "." + self._name
 
+    def path_list(self):
+        if self._parent:
+            return self._parent.path_list() + [ self._name, ]
+        else:
+            # Don't include the root node
+            return []
+
     def __str__(self):
         return self.path()
 
@@ -1566,6 +1650,10 @@ class SimObject(object):
 
     def getValue(self):
         return self.getCCObject()
+
+    @cxxMethod(return_value_policy="reference")
+    def getPort(self, if_name, idx):
+        pass
 
     # Create C++ port connections corresponding to the connections in
     # _port_refs

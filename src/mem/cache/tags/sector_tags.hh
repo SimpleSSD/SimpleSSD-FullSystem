@@ -36,9 +36,11 @@
 #ifndef __MEM_CACHE_TAGS_SECTOR_TAGS_HH__
 #define __MEM_CACHE_TAGS_SECTOR_TAGS_HH__
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "base/statistics.hh"
 #include "mem/cache/tags/base.hh"
 #include "mem/cache/tags/sector_blk.hh"
 #include "mem/packet.hh"
@@ -57,6 +59,12 @@ class ReplaceableEntry;
  */
 class SectorTags : public BaseTags
 {
+  private:
+    /** The cache blocks. */
+    std::vector<SectorSubBlk> blks;
+    /** The cache sector blocks. */
+    std::vector<SectorBlk> secBlks;
+
   protected:
     /** The allocatable associativity of the cache (alloc mask). */
     unsigned allocAssoc;
@@ -73,11 +81,6 @@ class SectorTags : public BaseTags
     /** The number of sectors in the cache. */
     const unsigned numSectors;
 
-    /** The cache blocks. */
-    std::vector<SectorSubBlk> blks;
-    /** The cache sector blocks. */
-    std::vector<SectorBlk> secBlks;
-
     // Organization of an address:
     // Tag | Placement Location | Sector Offset # | Offset #
     /** The amount to shift the address to get the sector tag. */
@@ -85,6 +88,18 @@ class SectorTags : public BaseTags
 
     /** Mask out all bits that aren't part of the sector tag. */
     const unsigned sectorMask;
+
+    struct SectorTagsStats : public Stats::Group
+    {
+        const SectorTags& tags;
+
+        SectorTagsStats(BaseTagStats &base_group, SectorTags& _tags);
+
+        void regStats() override;
+
+        /** Number of sub-blocks evicted due to a replacement. */
+        Stats::Vector evictionsReplacement;
+    } sectorStats;
 
   public:
     /** Convenience typedef. */
@@ -149,11 +164,13 @@ class SectorTags : public BaseTags
      *
      * @param addr Address to find a victim for.
      * @param is_secure True if the target memory space is secure.
+     * @param size Size, in bits, of new block to allocate.
      * @param evict_blks Cache blocks to be evicted.
      * @return Cache block to be replaced.
      */
     CacheBlk* findVictim(Addr addr, const bool is_secure,
-                         std::vector<CacheBlk*>& evict_blks) const override;
+                         const std::size_t size,
+                         std::vector<CacheBlk*>& evict_blks) override;
 
     /**
      * Calculate a block's offset in a sector from the address.

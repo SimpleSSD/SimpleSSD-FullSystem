@@ -117,11 +117,6 @@ getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
     return 0;
 }
 
-inline void startupCPU(ThreadContext *tc, int cpuId)
-{
-    tc->activate();
-}
-
 inline void
 copyRegs(ThreadContext *src, ThreadContext *dest)
 {
@@ -185,11 +180,6 @@ getExecutingAsid(ThreadContext *tc)
 {
     return 0;
 }
-
-/**
- * init Cpu function
- */
-void initCPU(ThreadContext *tc, int cpuId);
 
 } // namespace RiscvISA
 

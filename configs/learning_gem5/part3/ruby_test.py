@@ -28,13 +28,15 @@
 # Authors: Jason Lowe-Power
 
 """ This file creates a system with Ruby caches and runs the ruby random tester
-See Part 3 in the Learning gem5 book: learning.gem5.org/book/part3
+See Part 3 in the Learning gem5 book:
+http://gem5.org/documentation/learning_gem5/part3/MSIintro
 
 IMPORTANT: If you modify this file, it's likely that the Learning gem5 book
            also needs to be updated. For now, email Jason <jason@lowepower.com>
 
 """
 from __future__ import print_function
+from __future__ import absolute_import
 
 # import the m5 (gem5) library created when gem5 is built
 import m5
@@ -60,8 +62,8 @@ system.tester = RubyTester(checks_to_complete = 100,
                            wakeup_frequency = 10,
                            num_cpus = 2)
 
-# Create a DDR3 memory controller and connect it to the membus
-system.mem_ctrl = DDR3_1600_8x8()
+# Create a simple memory controller and connect it to the membus
+system.mem_ctrl = SimpleMemory(latency="50ns", bandwidth="0GB/s")
 system.mem_ctrl.range = system.mem_ranges[0]
 
 # Create the Ruby System

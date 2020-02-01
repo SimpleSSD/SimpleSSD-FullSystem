@@ -60,13 +60,6 @@ namespace X86ISA
     class X86Process : public Process
     {
       protected:
-        /**
-         * Declaration of architectural page table for x86.
-         *
-         * These page tables are stored in system memory and respect x86
-         * specification.
-         */
-
         Addr _gdtStart;
         Addr _gdtSize;
 
@@ -145,7 +138,6 @@ namespace X86ISA
         RegVal getSyscallArg(ThreadContext *tc, int &i) override;
         /// Explicitly import the otherwise hidden getSyscallArg
         using Process::getSyscallArg;
-        void setSyscallArg(ThreadContext *tc, int i, RegVal val) override;
         void clone(ThreadContext *old_tc, ThreadContext *new_tc,
                    Process *process, RegVal flags) override;
     };
@@ -184,11 +176,8 @@ namespace X86ISA
         void argsInit(int pageSize);
         void initState() override;
 
-        void syscall(int64_t callnum, ThreadContext *tc,
-                     Fault *fault) override;
         RegVal getSyscallArg(ThreadContext *tc, int &i) override;
         RegVal getSyscallArg(ThreadContext *tc, int &i, int width) override;
-        void setSyscallArg(ThreadContext *tc, int i, RegVal val) override;
         void clone(ThreadContext *old_tc, ThreadContext *new_tc,
                    Process *process, RegVal flags) override;
     };

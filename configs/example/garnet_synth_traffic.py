@@ -27,6 +27,7 @@
 # Author: Tushar Krishna
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 import m5
 from m5.objects import *
@@ -86,9 +87,6 @@ parser.add_option("--inj-vnet", type="int", default=-1,
 # Add the ruby specific and protocol specific options
 #
 Ruby.define_options(parser)
-
-exec(compile(open(os.path.join(config_root, "common", "Options.py")).read(),
-             os.path.join(config_root, "common", "Options.py"), 'exec'))
 
 (options, args) = parser.parse_args()
 

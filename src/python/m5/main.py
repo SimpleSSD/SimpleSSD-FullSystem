@@ -1,4 +1,4 @@
-# Copyright (c) 2016 ARM Limited
+# Copyright (c) 2016, 2019 Arm Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -53,6 +53,18 @@ version="%prog 2.0"
 brief_copyright=\
     "gem5 is copyrighted software; use the --copyright option for details."
 
+def _stats_help(option, opt, value, parser):
+    import m5
+    print("A stat file can either be specified as a URI or a plain")
+    print("path. When specified as a path, gem5 uses the default text ")
+    print("format.")
+    print()
+    print("The following stat formats are supported:")
+    print()
+    m5.stats.printStatVisitorTypes()
+    sys.exit(0)
+
+
 def parse_options():
     from . import config
     from .options import OptionParser
@@ -105,6 +117,9 @@ def parse_options():
     group("Statistics Options")
     option("--stats-file", metavar="FILE", default="stats.txt",
         help="Sets the output file for statistics [Default: %default]")
+    option("--stats-help",
+           action="callback", callback=_stats_help,
+           help="Display documentation for available stat visitors")
 
     # Configuration Options
     group("Configuration Options")
@@ -193,7 +208,7 @@ def interact(scope):
 
 
 def _check_tracing():
-    import defines
+    from . import defines
 
     if defines.TRACING_ON:
         return
@@ -212,6 +227,7 @@ def main(*args):
     from . import trace
 
     from .util import inform, fatal, panic, isInteractive
+    from m5.util.terminal_formatter import TerminalFormatter
 
     if len(args) == 0:
         options, arguments = parse_options()
@@ -291,18 +307,21 @@ def main(*args):
         print("SimObjects:")
         objects = list(SimObject.allClasses.keys())
         objects.sort()
+        terminal_formatter = TerminalFormatter()
         for name in objects:
             obj = SimObject.allClasses[name]
-            print("    %s" % obj)
+            print(terminal_formatter.format_output(str(obj), indent=4))
             params = list(obj._params.keys())
             params.sort()
             for pname in params:
                 param = obj._params[pname]
                 default = getattr(param, 'default', '')
-                print("        %s" % pname)
+                print(terminal_formatter.format_output(pname, indent=8))
                 if default:
-                    print("            default: %s" % default)
-                print("            desc: %s" % param.desc)
+                    print(terminal_formatter.format_output(
+                        str(default), label="default: ", indent=21))
+                print(terminal_formatter.format_output(
+                    param.desc, label="desc: ", indent=21))
                 print()
             print()
 

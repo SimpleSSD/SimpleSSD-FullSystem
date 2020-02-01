@@ -54,7 +54,7 @@ void X86MSIHandler::handleInterrupt(PacketPtr pkt) {
   bool rh = addr & 0x00000008;               // Redirection Hint
   bool dm = addr & 0x00000004;               // Destination Mode
 
-  uint16_t data = pkt->get<uint16_t>();
+  uint16_t data = pkt->getLE<uint16_t>();
   bool level = data & 0x8000;          // Trigger Mode
   uint8_t mode = (data & 0x0700) >> 8; // Delivery Mode
   uint8_t vector = data & 0x00FF;      // Interrupt Vector

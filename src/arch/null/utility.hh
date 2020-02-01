@@ -43,12 +43,14 @@
 #include "base/types.hh"
 #include "cpu/thread_context.hh"
 
-namespace NullISA {
+namespace NullISA
+{
 
-inline uint64_t getArgument(ThreadContext *tc, int &number, uint16_t size,
-                            bool fp) { return 0; }
-
-inline void startupCPU(ThreadContext *tc, int cpuId) {}
+static inline uint64_t
+getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
+{
+    return 0;
+}
 
 }
 

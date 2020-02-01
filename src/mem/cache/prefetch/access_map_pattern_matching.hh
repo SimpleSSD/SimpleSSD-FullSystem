@@ -40,7 +40,6 @@
 #ifndef __MEM_CACHE_PREFETCH_ACCESS_MAP_PATTERN_MATCHING_HH__
 #define __MEM_CACHE_PREFETCH_ACCESS_MAP_PATTERN_MATCHING_HH__
 
-#include "mem/cache/base.hh"
 #include "mem/cache/prefetch/associative_set.hh"
 #include "mem/cache/prefetch/queued.hh"
 #include "mem/packet.hh"
@@ -90,12 +89,15 @@ class AccessMapPatternMatching : public ClockedObject
         /** vector containing the state of the cachelines in this zone */
         std::vector<AccessMapState> states;
 
-        AccessMapEntry(size_t num_entries) : states(num_entries, AM_INIT)
-        {}
-
-        /** Reset the entries to their initial values */
-        void reset() override
+        AccessMapEntry(size_t num_entries)
+          : TaggedEntry(), states(num_entries, AM_INIT)
         {
+        }
+
+        void
+        invalidate() override
+        {
+            TaggedEntry::invalidate();
             for (auto &entry : states) {
                 entry = AM_INIT;
             }
@@ -181,6 +183,7 @@ class AccessMapPatternMatching : public ClockedObject
     AccessMapPatternMatching(const AccessMapPatternMatchingParams* p);
     ~AccessMapPatternMatching()
     {}
+    void startup() override;
     void calculatePrefetch(const BasePrefetcher::PrefetchInfo &pfi,
         std::vector<QueuedPrefetcher::AddrPriority> &addresses);
 };

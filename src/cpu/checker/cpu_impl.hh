@@ -285,7 +285,6 @@ Checker<Impl>::verify(const DynInstPtr &completed_inst)
 
                     pkt->dataStatic(&machInst);
                     icachePort->sendFunctional(pkt);
-                    machInst = gtoh(machInst);
 
                     delete pkt;
                 }
@@ -412,7 +411,7 @@ Checker<Impl>::verify(const DynInstPtr &completed_inst)
             int count = 0;
             do {
                 oldpc = thread->instAddr();
-                system->pcEventQueue.service(tc);
+                thread->pcEventQueue.service(oldpc, tc);
                 count++;
             } while (oldpc != thread->instAddr());
             if (count > 1) {

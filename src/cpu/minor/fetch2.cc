@@ -120,7 +120,6 @@ Fetch2::dumpAllInput(ThreadID tid)
         popInput(tid);
 
     fetchInfo[tid].inputIndex = 0;
-    fetchInfo[tid].havePC = false;
 }
 
 void
@@ -377,12 +376,10 @@ Fetch2::evaluate()
             } else {
                 uint8_t *line = line_in->line;
 
-                TheISA::MachInst inst_word;
                 /* The instruction is wholly in the line, can just
                  *  assign */
-                inst_word = TheISA::gtoh(
-                    *(reinterpret_cast<TheISA::MachInst *>
-                    (line + fetch_info.inputIndex)));
+                auto inst_word = *reinterpret_cast<TheISA::MachInst *>
+                                  (line + fetch_info.inputIndex);
 
                 if (!decoder->instReady()) {
                     decoder->moreBytes(fetch_info.pc,
@@ -586,9 +583,7 @@ Fetch2::getScheduledThread()
     }
 
     for (auto tid : priority_list) {
-        if (cpu.getContext(tid)->status() == ThreadContext::Active &&
-            getInput(tid) &&
-            !fetchInfo[tid].blocked) {
+        if (getInput(tid) && !fetchInfo[tid].blocked) {
             threadPriority = tid;
             return tid;
         }

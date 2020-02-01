@@ -42,6 +42,7 @@
 #          Brad Beckmann
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 import optparse
 import sys
@@ -61,9 +62,9 @@ from common.SysPaths import *
 from common.Benchmarks import *
 from common import Simulation
 from common import CacheConfig
-from common import MemConfig
 from common import CpuConfig
-from common import BPConfig
+from common import MemConfig
+from common import ObjectList
 from common.Caches import *
 from common import Options
 
@@ -88,19 +89,24 @@ def build_test_system(np, simplessd):
     elif buildEnv['TARGET_ISA'] == "sparc":
         test_sys = makeSparcSystem(test_mem_mode, bm[0], cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == "x86":
-        test_sys = makeLinuxX86System(test_mem_mode, simplessd,
-                                      options.num_cpus, bm[0], options.ruby,
-                                      cmdline=cmdline)
+        test_sys = makeLinuxX86System(test_mem_mode, simplessd, np, bm[0],
+                                      options.ruby, cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == "arm":
-        test_sys = makeArmSystem(test_mem_mode, options.machine_type,
-                                 simplessd, options.num_cpus, bm[0],
-                                 options.dtb_filename,
-                                 bare_metal=options.bare_metal,
-                                 cmdline=cmdline,
-                                 external_memory=
-                                   options.external_memory_system,
-                                 ruby=options.ruby,
-                                 security=options.enable_security_extensions)
+        test_sys = makeArmSystem(
+            test_mem_mode,
+            options.machine_type,
+            simplessd,
+            np,
+            bm[0],
+            options.dtb_filename,
+            bare_metal=options.bare_metal,
+            cmdline=cmdline,
+            external_memory=options.external_memory_system,
+            ruby=options.ruby,
+            security=options.enable_security_extensions,
+            vio_9p=options.vio_9p,
+            bootloader=options.bootloader,
+        )
         if options.enable_context_switch_stats_dump:
             test_sys.enable_context_switch_stats_dump = True
     else:
@@ -142,14 +148,15 @@ def build_test_system(np, simplessd):
     test_sys.cpu = [TestCPUClass(clk_domain=test_sys.cpu_clk_domain, cpu_id=i)
                     for i in range(np)]
 
-    if CpuConfig.is_kvm_cpu(TestCPUClass) or CpuConfig.is_kvm_cpu(FutureClass):
+    if ObjectList.is_kvm_cpu(TestCPUClass) or \
+        ObjectList.is_kvm_cpu(FutureClass):
         test_sys.kvm_vm = KvmVM()
 
         if buildEnv['TARGET_ISA'] in "x86":
             test_sys.eventq_index = np
 
     if options.ruby:
-        bootmem = getattr(test_sys, 'bootmem', None)
+        bootmem = getattr(test_sys, '_bootmem', None)
         Ruby.create_system(options, True, test_sys, test_sys.iobus,
                            test_sys._dma_ports, bootmem)
 
@@ -211,7 +218,7 @@ def build_test_system(np, simplessd):
 
         # Sanity check
         if options.simpoint_profile:
-            if not CpuConfig.is_noncaching_cpu(TestCPUClass):
+            if not ObjectList.is_noncaching_cpu(TestCPUClass):
                 fatal("SimPoint generation should be done with atomic cpu")
             if np > 1:
                 fatal("SimPoint generation not supported with more than one CPUs")
@@ -221,9 +228,15 @@ def build_test_system(np, simplessd):
                 test_sys.cpu[i].addSimPointProbe(options.simpoint_interval)
             if options.checker:
                 test_sys.cpu[i].addCheckerCpu()
-            if options.bp_type:
-                bpClass = BPConfig.get(options.bp_type)
-                test_sys.cpu[i].branchPred = bpClass()
+            if not ObjectList.is_kvm_cpu(TestCPUClass):
+                if options.bp_type:
+                    bpClass = ObjectList.bp_list.get(options.bp_type)
+                    test_sys.cpu[i].branchPred = bpClass()
+                if options.indirect_bp_type:
+                    IndirectBPClass = ObjectList.indirect_bp_list.get(
+                        options.indirect_bp_type)
+                    test_sys.cpu[i].branchPred.indirectBranchPred = \
+                        IndirectBPClass()
             test_sys.cpu[i].createThreads()
 
         # If elastic tracing is enabled when not restoring from checkpoint and
@@ -268,7 +281,8 @@ def build_drive_system(np):
 
     cmdline = cmd_line_template()
     if buildEnv['TARGET_ISA'] == 'alpha':
-        drive_sys = makeLinuxAlphaSystem(drive_mem_mode, bm[1], cmdline=cmdline)
+        drive_sys = makeLinuxAlphaSystem(drive_mem_mode, bm[1],
+                                         cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == 'mips':
         drive_sys = makeLinuxMipsSystem(drive_mem_mode, bm[1], cmdline=cmdline)
     elif buildEnv['TARGET_ISA'] == 'sparc':
@@ -303,7 +317,7 @@ def build_drive_system(np):
     if options.kernel is not None:
         drive_sys.kernel = binary(options.kernel)
 
-    if CpuConfig.is_kvm_cpu(DriveCPUClass):
+    if ObjectList.is_kvm_cpu(DriveCPUClass):
         drive_sys.kvm_vm = KvmVM()
 
     drive_sys.iobridge = Bridge(delay='50ns',
@@ -352,12 +366,12 @@ if options.benchmark:
         sys.exit(1)
 else:
     if options.dual:
-        bm = [SysConfig(disk=options.disk_image, rootdev=options.root_device,
+        bm = [SysConfig(disks=options.disk_image, rootdev=options.root_device,
                         mem=options.mem_size, os_type=options.os_type),
-              SysConfig(disk=options.disk_image, rootdev=options.root_device,
+              SysConfig(disks=options.disk_image, rootdev=options.root_device,
                         mem=options.mem_size, os_type=options.os_type)]
     else:
-        bm = [SysConfig(disk=options.disk_image, rootdev=options.root_device,
+        bm = [SysConfig(disks=options.disk_image, rootdev=options.root_device,
                         mem=options.mem_size, os_type=options.os_type)]
 
 np = options.num_cpus

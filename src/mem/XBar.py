@@ -1,4 +1,4 @@
-# Copyright (c) 2012, 2015, 2017 ARM Limited
+# Copyright (c) 2012, 2015, 2017, 2019 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -45,9 +45,9 @@ from m5.proxy import *
 from m5.SimObject import SimObject
 from m5.defines import buildEnv
 
-from m5.objects.MemObject import MemObject
+from m5.objects.ClockedObject import ClockedObject
 
-class BaseXBar(MemObject):
+class BaseXBar(ClockedObject):
     type = 'BaseXBar'
     abstract = True
     cxx_header = "mem/xbar.hh"
@@ -101,6 +101,12 @@ class CoherentXBar(BaseXBar):
 
     # An optional snoop filter
     snoop_filter = Param.SnoopFilter(NULL, "Selected snoop filter")
+
+    # Maximum number of outstanding snoop requests for sanity checks
+    max_outstanding_snoops = Param.Int(512, "Max. outstanding snoops allowed")
+
+    # Maximum routing table size for sanity checks
+    max_routing_table_size = Param.Int(512, "Max. routing table size")
 
     # Determine how this crossbar handles packets where caches have
     # already committed to responding, by establishing if the crossbar

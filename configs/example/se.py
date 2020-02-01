@@ -43,6 +43,7 @@
 # "m5 test.py"
 
 from __future__ import print_function
+from __future__ import absolute_import
 
 import optparse
 import sys
@@ -61,8 +62,9 @@ from common import Options
 from common import Simulation
 from common import CacheConfig
 from common import CpuConfig
-from common import BPConfig
+from common import ObjectList
 from common import MemConfig
+from common.FileSystemConfig import config_filesystem
 from common.Caches import *
 from common.cpu2000 import *
 
@@ -204,7 +206,7 @@ if options.elastic_trace_en:
 for cpu in system.cpu:
     cpu.clk_domain = system.cpu_clk_domain
 
-if CpuConfig.is_kvm_cpu(CPUClass) or CpuConfig.is_kvm_cpu(FutureClass):
+if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv['TARGET_ISA'] == 'x86':
         system.kvm_vm = KvmVM()
         for process in multiprocesses:
@@ -215,7 +217,7 @@ if CpuConfig.is_kvm_cpu(CPUClass) or CpuConfig.is_kvm_cpu(FutureClass):
 
 # Sanity check
 if options.simpoint_profile:
-    if not CpuConfig.is_noncaching_cpu(CPUClass):
+    if not ObjectList.is_noncaching_cpu(CPUClass):
         fatal("SimPoint/BPProbe should be done with an atomic cpu")
     if np > 1:
         fatal("SimPoint generation not supported with more than one CPUs")
@@ -235,8 +237,13 @@ for i in range(np):
         system.cpu[i].addCheckerCpu()
 
     if options.bp_type:
-        bpClass = BPConfig.get(options.bp_type)
+        bpClass = ObjectList.bp_list.get(options.bp_type)
         system.cpu[i].branchPred = bpClass()
+
+    if options.indirect_bp_type:
+        indirectBPClass = \
+            ObjectList.indirect_bp_list.get(options.indirect_bp_type)
+        system.cpu[i].branchPred.indirectBranchPred = indirectBPClass()
 
     system.cpu[i].createThreads()
 
@@ -269,6 +276,7 @@ else:
     system.system_port = system.membus.slave
     CacheConfig.config_cache(options, system)
     MemConfig.config_mem(options, system)
+    config_filesystem(system, options)
 
 root = Root(full_system = False, system = system)
 Simulation.run(options, root, system, FutureClass)

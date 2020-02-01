@@ -53,34 +53,28 @@
 #include <vector>
 
 #include "arch/isa_traits.hh"
+#include "base/loader/memory_image.hh"
 #include "base/loader/symtab.hh"
 #include "base/statistics.hh"
 #include "config/the_isa.hh"
+#include "cpu/pc_event.hh"
 #include "enums/MemoryMode.hh"
 #include "mem/mem_master.hh"
-#include "mem/mem_object.hh"
 #include "mem/physical.hh"
 #include "mem/port.hh"
 #include "mem/port_proxy.hh"
 #include "params/System.hh"
 #include "sim/futex_map.hh"
+#include "sim/redirect_path.hh"
 #include "sim/se_signal.hh"
-
-/**
- * To avoid linking errors with LTO, only include the header if we
- * actually have the definition.
- */
-#if THE_ISA != NULL_ISA
-#include "cpu/pc_event.hh"
-
-#endif
+#include "sim/sim_object.hh"
 
 class BaseRemoteGDB;
 class KvmVM;
 class ObjectFile;
 class ThreadContext;
 
-class System : public MemObject
+class System : public SimObject, public PCEventScope
 {
   private:
 
@@ -96,7 +90,7 @@ class System : public MemObject
         /**
          * Create a system port with a name and an owner.
          */
-        SystemPort(const std::string &_name, MemObject *_owner)
+        SystemPort(const std::string &_name, SimObject *_owner)
             : MasterPort(_name, _owner)
         { }
         bool recvTimingResp(PacketPtr pkt) override
@@ -105,6 +99,7 @@ class System : public MemObject
         { panic("SystemPort does not expect retry!\n"); }
     };
 
+    std::list<PCEvent *> liveEvents;
     SystemPort _systemPort;
 
   public:
@@ -128,8 +123,8 @@ class System : public MemObject
     /**
      * Additional function to return the Port of a memory object.
      */
-    BaseMasterPort& getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID) override;
+    Port &getPort(const std::string &if_name,
+                  PortID idx=InvalidPortID) override;
 
     /** @{ */
     /**
@@ -192,17 +187,21 @@ class System : public MemObject
      */
     unsigned int cacheLineSize() const { return _cacheLineSize; }
 
-#if THE_ISA != NULL_ISA
-    PCEventQueue pcEventQueue;
-#endif
-
     std::vector<ThreadContext *> threadContexts;
-    const bool multiThread;
+    ThreadContext *findFreeContext();
 
-    ThreadContext *getThreadContext(ContextID tid)
+    ThreadContext *
+    getThreadContext(ContextID tid) const
     {
         return threadContexts[tid];
     }
+
+    const bool multiThread;
+
+    using SimObject::schedule;
+
+    bool schedule(PCEvent *event) override;
+    bool remove(PCEvent *event) override;
 
     unsigned numContexts() const { return threadContexts.size(); }
 
@@ -223,6 +222,7 @@ class System : public MemObject
 
     /** Object pointer for the kernel code */
     ObjectFile *kernel;
+    MemoryImage kernelImage;
 
     /** Additional object files */
     std::vector<ObjectFile *> kernelExtras;
@@ -285,6 +285,19 @@ class System : public MemObject
      * Get the architecture.
      */
     Arch getArch() const { return Arch::TheISA; }
+
+    /**
+     * Get the guest byte order.
+     */
+    ByteOrder
+    getGuestByteOrder() const
+    {
+#if THE_ISA != NULL_ISA
+        return TheISA::GuestByteOrder;
+#else
+        panic("The NULL ISA has no endianness.");
+#endif
+    }
 
      /**
      * Get the page bytes for the ISA.
@@ -488,13 +501,11 @@ class System : public MemObject
     {
         Addr addr M5_VAR_USED = 0; // initialize only to avoid compiler warning
 
-#if THE_ISA != NULL_ISA
         if (symtab->findAddress(lbl, addr)) {
-            T *ev = new T(&pcEventQueue, desc, fixFuncEventAddr(addr),
+            T *ev = new T(this, desc, fixFuncEventAddr(addr),
                           std::forward<Args>(args)...);
             return ev;
         }
-#endif
 
         return NULL;
     }
@@ -559,6 +570,12 @@ class System : public MemObject
   protected:
     Params *_params;
 
+    /**
+     * Range for memory-mapped m5 pseudo ops. The range will be
+     * invalid/empty if disabled.
+     */
+    const AddrRange _m5opRange;
+
   public:
     System(Params *p);
     ~System();
@@ -602,7 +619,6 @@ class System : public MemObject
 
   public:
     Counter totalNumInsts;
-    EventQueue instEventQueue;
     std::map<std::pair<uint32_t,uint32_t>, Tick>  lastWorkItemStarted;
     std::map<uint32_t, Stats::Histogram*> workItemStats;
 
@@ -628,6 +644,11 @@ class System : public MemObject
     // receiver will delete the signal upon reception.
     std::list<BasicSignal> signalList;
 
+    // Used by syscall-emulation mode. This member contains paths which need
+    // to be redirected to the faux-filesystem (a duplicate filesystem
+    // intended to replace certain files on the host filesystem).
+    std::vector<RedirectPath*> redirectPaths;
+
   protected:
 
     /**
@@ -647,7 +668,6 @@ class System : public MemObject
      * @param section relevant section in the checkpoint
      */
     virtual void unserializeSymtab(CheckpointIn &cp) {}
-
 };
 
 void printSystems();

@@ -54,7 +54,7 @@ from os.path import basename, dirname, exists, isdir, isfile, join as joinpath
 
 import SCons
 
-from gem5_scons import Transform
+from gem5_scons import Transform, warning, error
 
 # This file defines how to build a particular configuration of gem5
 # based on variable settings in the 'env' build environment.
@@ -154,7 +154,7 @@ class SourceFile(object):
     static_objs = {}
     shared_objs = {}
 
-    def __init__(self, source, tags=None, add_tags=None):
+    def __init__(self, source, tags=None, add_tags=None, append=None):
         if tags is None:
             tags='gem5 lib'
         if isinstance(tags, basestring):
@@ -170,6 +170,8 @@ class SourceFile(object):
                 add_tags = set(add_tags)
             self.tags |= add_tags
 
+        self.append = append
+
         tnode = source
         if not isinstance(source, SCons.Node.FS.File):
             tnode = File(source)
@@ -183,12 +185,18 @@ class SourceFile(object):
 
     def static(self, env):
         key = (self.tnode, env['OBJSUFFIX'])
+        if self.append:
+            env = env.Clone()
+            env.Append(**self.append)
         if not key in self.static_objs:
             self.static_objs[key] = env.StaticObject(self.tnode)
         return self.static_objs[key]
 
     def shared(self, env):
         key = (self.tnode, env['OBJSUFFIX'])
+        if self.append:
+            env = env.Clone()
+            env.Append(**self.append)
         if not key in self.shared_objs:
             self.shared_objs[key] = env.SharedObject(self.tnode)
         return self.shared_objs[key]
@@ -315,9 +323,9 @@ class Source(SourceFile):
         self.tags.add(Source._current_group_tag)
 
     '''Add a c/c++ source file to the build'''
-    def __init__(self, source, tags=None, add_tags=None):
+    def __init__(self, source, tags=None, add_tags=None, append=None):
         '''specify the source file, and any tags'''
-        super(Source, self).__init__(source, tags, add_tags)
+        super(Source, self).__init__(source, tags, add_tags, append)
         self._add_link_group_tag()
 
 class PySource(SourceFile):
@@ -609,6 +617,7 @@ for extra_dir in extras_dir_list:
 
         if 'SConscript' in files:
             build_dir = joinpath(env['BUILDDIR'], root[prefix_len:])
+            Source.set_group(build_dir)
             SConscript(joinpath(root, 'SConscript'), variant_dir=build_dir)
 
 for opt in export_vars:
@@ -1009,22 +1018,22 @@ if env['USE_PYTHON']:
         Source(cc_file)
 
 # Build all protocol buffers if we have got protoc and protobuf available
-if env['HAVE_PROTOBUF']:
+if env['HAVE_PROTOC'] and env['HAVE_PROTOBUF']:
     for proto in ProtoBuf.all:
         # Use both the source and header as the target, and the .proto
         # file as the source. When executing the protoc compiler, also
         # specify the proto_path to avoid having the generated files
         # include the path.
         env.Command([proto.cc_file, proto.hh_file], proto.tnode,
-                    MakeAction('$PROTOC --cpp_out ${TARGET.dir} '
+                    MakeAction('${PROTOC} --cpp_out ${TARGET.dir} '
                                '--proto_path ${SOURCE.dir} $SOURCE',
                                Transform("PROTOC")))
 
         # Add the C++ source file
-        Source(proto.cc_file, tags=proto.tags)
+        Source(proto.cc_file, tags=proto.tags,
+                append={'CXXFLAGS': '-Wno-array-bounds'})
 elif ProtoBuf.all:
-    print('Got protobuf to build, but lacks support!')
-    Exit(1)
+    error('Got protobuf to build, but lacks support!')
 
 #
 # Handle debug flags
@@ -1134,7 +1143,7 @@ env.AlwaysBuild(tags)
 # Build a small helper that marshals the Python code using the same
 # version of Python as gem5. This is in an unorthodox location to
 # avoid building it for every variant.
-py_marshal = env.Program('python/marshal.cc')[0]
+py_marshal = env.Program('marshal', 'python/marshal.cc')[0]
 
 # Embed python files.  All .py files that have been indicated by a
 # PySource() call in a SConscript need to be embedded into the M5
@@ -1343,8 +1352,7 @@ elif env['CLANG']:
     for target in ['opt', 'fast', 'prof', 'perf']:
         ccflags[target] += ['-O3']
 else:
-    print('Unknown compiler, please fix compiler options')
-    Exit(1)
+    error('Unknown compiler, please fix compiler options')
 
 
 # To speed things up, we only instantiate the build environments we
@@ -1397,9 +1405,9 @@ if 'opt' in needed_envs:
 
 # "Fast" binary
 if 'fast' in needed_envs:
-    disable_partial = disable_partial and \
-            env.get('BROKEN_INCREMENTAL_LTO', False) and \
-            GetOption('force_lto')
+    disable_partial = disable_partial or \
+            (env.get('BROKEN_INCREMENTAL_LTO', False) and \
+            GetOption('force_lto'))
     makeEnv(env, 'fast', '.fo', strip = True,
             CCFLAGS = Split(ccflags['fast']),
             CPPDEFINES = ['NDEBUG', 'TRACING_ON=0'],

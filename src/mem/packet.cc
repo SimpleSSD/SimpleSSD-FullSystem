@@ -180,11 +180,8 @@ MemCmd::commandInfo[] =
     /* SwapResp -- for Swap ldstub type operations */
     { SET4(IsRead, IsWrite, IsResponse, HasData),
             InvalidCmd, "SwapResp" },
-    /* IntReq -- for interrupts */
-    { SET4(IsWrite, IsRequest, NeedsResponse, HasData),
-        MessageResp, "MessageReq" },
-    /* IntResp -- for interrupts */
-    { SET2(IsWrite, IsResponse), InvalidCmd, "MessageResp" },
+    { 0, InvalidCmd, "Deprecated_MessageReq" },
+    { 0, InvalidCmd, "Deprecated_MessageResp" },
     /* MemFenceReq -- for synchronization requests */
     {SET2(IsRequest, NeedsResponse), MemFenceResp, "MemFenceReq"},
     /* MemFenceResp -- for synchronization responses */
@@ -226,6 +223,12 @@ MemCmd::commandInfo[] =
     { SET2(IsInvalidate, IsResponse),
       InvalidCmd, "InvalidateResp" }
 };
+
+AddrRange
+Packet::getAddrRange() const
+{
+    return RangeSize(getAddr(), getSize());
+}
 
 bool
 Packet::trySatisfyFunctional(Printable *obj, Addr addr, bool is_secure, int size,
@@ -388,6 +391,32 @@ Packet::print() const {
     std::ostringstream str;
     print(str);
     return str.str();
+}
+
+bool
+Packet::matchBlockAddr(const Addr addr, const bool is_secure,
+                       const int blk_size) const
+{
+    return (getBlockAddr(blk_size) == addr) && (isSecure() == is_secure);
+}
+
+bool
+Packet::matchBlockAddr(const PacketPtr pkt, const int blk_size) const
+{
+    return matchBlockAddr(pkt->getBlockAddr(blk_size), pkt->isSecure(),
+                          blk_size);
+}
+
+bool
+Packet::matchAddr(const Addr addr, const bool is_secure) const
+{
+    return (getAddr() == addr) && (isSecure() == is_secure);
+}
+
+bool
+Packet::matchAddr(const PacketPtr pkt) const
+{
+    return matchAddr(pkt->getAddr(), pkt->isSecure());
 }
 
 Packet::PrintReqState::PrintReqState(std::ostream &_os, int _verbosity)

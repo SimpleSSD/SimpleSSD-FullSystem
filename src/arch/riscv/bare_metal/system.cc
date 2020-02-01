@@ -30,6 +30,7 @@
 
 #include "arch/riscv/bare_metal/system.hh"
 
+#include "arch/riscv/faults.hh"
 #include "base/loader/object_file.hh"
 
 BareMetalRiscvSystem::BareMetalRiscvSystem(Params *p)
@@ -54,8 +55,13 @@ BareMetalRiscvSystem::initState()
     // Call the initialisation of the super class
     RiscvSystem::initState();
 
+    for (auto *tc: threadContexts) {
+        RiscvISA::Reset().invoke(tc);
+        tc->activate();
+    }
+
     // load program sections into memory
-    if (!bootloader->loadSections(physProxy)) {
+    if (!bootloader->buildImage().write(physProxy)) {
         warn("could not load sections to memory");
     }
 }
