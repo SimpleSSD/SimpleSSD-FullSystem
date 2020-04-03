@@ -46,6 +46,8 @@ class ThreadContext
 
     int intResult = DefaultIntResult;
     double floatResult = DefaultFloatResult;
+
+    int intOffset = 0;
 };
 
 const int ThreadContext::ints[] = {
@@ -78,6 +80,15 @@ struct TestABI_RetReg
 struct TestABI_2D
 {
     using Position = std::pair<int, int>;
+};
+
+struct TestABI_TcInit
+{
+    struct Position
+    {
+        int pos;
+        Position(const ThreadContext *tc) : pos(tc->intOffset) {}
+    };
 };
 
 namespace GuestABI
@@ -188,6 +199,17 @@ struct Result<TestABI_2D, Ret,
     }
 };
 
+// Hooks for the TcInit ABI arguments.
+template <>
+struct Argument<TestABI_TcInit, int>
+{
+    static int
+    get(ThreadContext *tc, TestABI_TcInit::Position &position)
+    {
+        return tc->ints[position.pos++];
+    }
+};
+
 } // namespace GuestABI
 
 // Test function which verifies that its arguments reflect the 1D ABI and
@@ -237,6 +259,13 @@ test2DVoid(ThreadContext *tc, int a, float b, int c, double d,
     EXPECT_EQ(varargs.get<double>(), tc->floats[3]);
 }
 
+void
+testTcInit(ThreadContext *tc, int a)
+{
+    EXPECT_EQ(tc->intOffset, 2);
+    EXPECT_EQ(a, tc->ints[2]);
+}
+
 // Test functions which returns various types of values.
 const int IntRetValue = 50;
 const float FloatRetValue = 3.14;
@@ -269,6 +298,13 @@ TEST(GuestABI, ABI_2D_args)
     invokeSimcall<TestABI_2D>(&tc, test2DVoid);
     EXPECT_EQ(tc.intResult, tc.DefaultIntResult);
     EXPECT_EQ(tc.floatResult, tc.DefaultFloatResult);
+}
+
+TEST(GuestABI, ABI_TC_init)
+{
+    ThreadContext tc;
+    tc.intOffset = 2;
+    invokeSimcall<TestABI_TcInit>(&tc, testTcInit);
 }
 
 TEST(GuestABI, ABI_returns)
@@ -325,4 +361,15 @@ TEST(GuestABI, dumpSimcall)
     ThreadContext tc;
     std::string dump = dumpSimcall<TestABI_1D>("test", &tc, testIntVoid);
     EXPECT_EQ(dump, "test(0, 11, 2, 13, ...)");
+}
+
+TEST(GuestABI, isVarArgs)
+{
+    EXPECT_TRUE(GuestABI::IsVarArgs<GuestABI::VarArgs<int>>::value);
+    EXPECT_FALSE(GuestABI::IsVarArgs<int>::value);
+    EXPECT_FALSE(GuestABI::IsVarArgs<double>::value);
+    struct FooStruct {};
+    EXPECT_FALSE(GuestABI::IsVarArgs<FooStruct>::value);
+    union FooUnion {};
+    EXPECT_FALSE(GuestABI::IsVarArgs<FooUnion>::value);
 }

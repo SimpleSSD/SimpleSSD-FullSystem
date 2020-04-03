@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2013 Andreas Sandberg
- * All rights reserved.
+ * Copyright 2020 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -25,62 +24,18 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Authors: Andreas Sandberg
+ * Authors: Gabe Black
  */
 
-#include "arch/generic/mmapped_ipr.hh"
+#ifndef __ARCH_GENERIC_ISA_HH__
+#define __ARCH_GENERIC_ISA_HH__
 
-#include "arch/isa_traits.hh"
-#include "config/the_isa.hh"
-#include "mem/packet.hh"
-#include "mem/packet_access.hh"
-#include "sim/pseudo_inst.hh"
+#include "sim/sim_object.hh"
 
-using namespace GenericISA;
-
-static void
-handlePseudoInst(ThreadContext *xc, Packet *pkt)
+class BaseISA : public SimObject
 {
-    const Addr offset(pkt->getAddr() & IPR_IN_CLASS_MASK);
-    const uint8_t func((offset >> 8) & 0xFF);
-    uint64_t ret;
+  protected:
+    using SimObject::SimObject;
+};
 
-    assert((offset >> 16) == 0);
-    ret = PseudoInst::pseudoInst<PseudoInstABI>(xc, func);
-    if (pkt->isRead())
-        pkt->set(ret, TheISA::GuestByteOrder);
-}
-
-Cycles
-GenericISA::handleGenericIprRead(ThreadContext *xc, Packet *pkt)
-{
-    Addr va(pkt->getAddr());
-    Addr cls(va >> IPR_CLASS_SHIFT);
-
-    switch (cls) {
-    case IPR_CLASS_PSEUDO_INST:
-        handlePseudoInst(xc, pkt);
-        break;
-    default:
-        panic("Unhandled generic IPR read: 0x%x\n", va);
-    }
-
-    return Cycles(1);
-}
-
-Cycles
-GenericISA::handleGenericIprWrite(ThreadContext *xc, Packet *pkt)
-{
-    Addr va(pkt->getAddr());
-    Addr cls(va >> IPR_CLASS_SHIFT);
-
-    switch (cls) {
-    case IPR_CLASS_PSEUDO_INST:
-        handlePseudoInst(xc, pkt);
-        break;
-    default:
-        panic("Unhandled generic IPR write: 0x%x\n", va);
-    }
-
-    return Cycles(1);
-}
+#endif // __ARCH_GENERIC_ISA_HH__

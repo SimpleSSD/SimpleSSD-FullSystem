@@ -35,24 +35,26 @@
 
 #include "arch/power/process.hh"
 
+#include "sim/syscall_desc.hh"
+
 /// A process with emulated PPC/Linux syscalls.
 class PowerLinuxProcess : public PowerProcess
 {
   public:
     PowerLinuxProcess(ProcessParams * params, ObjectFile *objFile);
 
-    virtual SyscallDesc* getDesc(int callnum);
+    SyscallDesc *getDesc(int callnum) override;
 
-    void initState();
+    void initState() override;
 
     void syscall(ThreadContext *tc, Fault *fault) override;
 
-    RegVal getSyscallArg(ThreadContext *tc, int &i);
+    RegVal getSyscallArg(ThreadContext *tc, int &i) override;
     /// Explicitly import the otherwise hidden getSyscallArg
     using Process::getSyscallArg;
 
     /// Array of syscall descriptors, indexed by call number.
-    static SyscallDesc syscallDescs[];
+    static SyscallDescABI<DefaultSyscallABI> syscallDescs[];
 
     const int Num_Syscall_Descs;
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 The Hewlett-Packard Development Company
+ * Copyright (c) 2020 The Regents of the University of California.
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -33,41 +33,52 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
-#ifndef __X86_LINUX_PROCESS_HH__
-#define __X86_LINUX_PROCESS_HH__
+#include "arch/x86/registers.hh"
+#include "sim/guest_abi.hh"
 
-#include "arch/x86/linux/linux.hh"
-#include "arch/x86/process.hh"
-#include "sim/process.hh"
-
-struct ProcessParams;
-struct ThreadContext;
-
-namespace X86ISA {
-
-class X86_64LinuxProcess : public X86_64Process
+struct X86PseudoInstABI
 {
-  public:
-    /// Constructor.
-    X86_64LinuxProcess(ProcessParams * params, ObjectFile *objFile);
-    void syscall(ThreadContext *tc, Fault *fault) override;
-    void clone(ThreadContext *old_tc, ThreadContext *new_tc, Process *process,
-               RegVal flags) override;
+    using Position = int;
 };
 
-class I386LinuxProcess : public I386Process
+namespace GuestABI
 {
-  public:
-    /// Constructor.
-    I386LinuxProcess(ProcessParams * params, ObjectFile *objFile);
-    void syscall(ThreadContext *tc, Fault *fault) override;
-    void clone(ThreadContext *old_tc, ThreadContext *new_tc, Process *process,
-               RegVal flags) override;
+
+template <typename T>
+struct Result<X86PseudoInstABI, T>
+{
+    static void
+    store(ThreadContext *tc, const T &ret)
+    {
+        // This assumes that all pseudo ops have their return value set
+        // by the pseudo op instruction. This may need to be revisited if we
+        // modify the pseudo op ABI in util/m5/m5op_x86.S
+        tc->setIntReg(X86ISA::INTREG_RAX, ret);
+    }
 };
 
-} // namespace X86ISA
-#endif // __X86_LINUX_PROCESS_HH__
+template <>
+struct Argument<X86PseudoInstABI, uint64_t>
+{
+    static uint64_t
+    get(ThreadContext *tc, X86PseudoInstABI::Position &position)
+    {
+        // The first 6 integer arguments are passed in registers, the rest
+        // are passed on the stack.
+
+        panic_if(position >= 6, "Too many psuedo inst arguments.");
+
+        using namespace X86ISA;
+
+        const int int_reg_map[] = {
+            INTREG_RDI, INTREG_RSI, INTREG_RDX,
+            INTREG_RCX, INTREG_R8, INTREG_R9
+        };
+
+        return tc->readIntReg(int_reg_map[position++]);
+    }
+};
+
+} // namespace GuestABI

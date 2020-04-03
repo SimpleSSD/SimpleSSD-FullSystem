@@ -28,7 +28,7 @@
 #include "dev/storage/simplessd/sim/simulator.hh"
 #include "sim/sim_object.hh"
 
-#define STAT_UPDATE_PERIOD 1000000
+#define STAT_UPDATE_PERIOD 10000000
 
 typedef enum _INTERRUPT_MODE {
   INTERRUPT_PIN,

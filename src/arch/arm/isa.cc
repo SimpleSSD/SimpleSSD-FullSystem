@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2019 ARM Limited
+ * Copyright (c) 2010-2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -61,15 +61,10 @@
 namespace ArmISA
 {
 
-ISA::ISA(Params *p)
-    : SimObject(p),
-      system(NULL),
-      _decoderFlavour(p->decoderFlavour),
-      _vecRegRenameMode(Enums::Full),
-      pmu(p->pmu),
-      haveGICv3CPUInterface(false),
-      impdefAsNop(p->impdef_nop),
-      afterStartup(false)
+ISA::ISA(Params *p) : BaseISA(p), system(NULL),
+    _decoderFlavour(p->decoderFlavour), _vecRegRenameMode(Enums::Full),
+    pmu(p->pmu), haveGICv3CPUInterface(false), impdefAsNop(p->impdef_nop),
+    afterStartup(false)
 {
     miscRegs[MISCREG_SCTLR_RST] = 0;
 
@@ -2188,6 +2183,18 @@ ISA::zeroSveVecRegUpperPart(VecRegContainer &vc, unsigned eCount)
     for (int i = 2; i < eCount; ++i) {
         vv[i] = 0;
     }
+}
+
+ISA::MiscRegLUTEntryInitializer::chain
+ISA::MiscRegLUTEntryInitializer::highest(ArmSystem *const sys) const
+{
+    switch (FullSystem ? sys->highestEL() : EL1) {
+      case EL0:
+      case EL1: priv(); break;
+      case EL2: hyp(); break;
+      case EL3: mon(); break;
+    }
+    return *this;
 }
 
 }  // namespace ArmISA

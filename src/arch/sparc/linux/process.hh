@@ -34,6 +34,7 @@
 #include "arch/sparc/linux/linux.hh"
 #include "arch/sparc/process.hh"
 #include "sim/process.hh"
+#include "sim/syscall_desc.hh"
 
 namespace SparcISA {
 
@@ -44,14 +45,14 @@ class SparcLinuxProcess
 {
   public:
      /// Array of syscall descriptors, indexed by call number.
-    static SyscallDesc syscallDescs[];
+    static SyscallDescABI<DefaultSyscallABI> syscallDescs[];
 
      /// Array of 32 bit compatibility syscall descriptors,
      /// indexed by call number.
-    static SyscallDesc syscall32Descs[];
+    static SyscallDescABI<DefaultSyscallABI> syscall32Descs[];
 
-    SyscallDesc* getDesc(int callnum);
-    SyscallDesc* getDesc32(int callnum);
+    SyscallDesc *getDesc(int callnum);
+    SyscallDesc *getDesc32(int callnum);
 
     static const int Num_Syscall_Descs;
     static const int Num_Syscall32_Descs;
@@ -65,14 +66,14 @@ class Sparc32LinuxProcess : public SparcLinuxProcess, public Sparc32Process
     Sparc32LinuxProcess(ProcessParams * params, ObjectFile *objFile);
 
     SyscallDesc*
-    getDesc(int callnum)
+    getDesc(int callnum) override
     {
         return SparcLinuxProcess::getDesc32(callnum);
     }
 
     void syscall(ThreadContext *tc, Fault *fault) override;
 
-    void handleTrap(int trapNum, ThreadContext *tc, Fault *fault);
+    void handleTrap(int trapNum, ThreadContext *tc, Fault *fault) override;
 };
 
 /// A process with emulated 32 bit SPARC/Linux syscalls.
@@ -83,14 +84,14 @@ class Sparc64LinuxProcess : public SparcLinuxProcess, public Sparc64Process
     Sparc64LinuxProcess(ProcessParams * params, ObjectFile *objFile);
 
     SyscallDesc*
-    getDesc(int callnum)
+    getDesc(int callnum) override
     {
         return SparcLinuxProcess::getDesc(callnum);
     }
 
     void syscall(ThreadContext *tc, Fault *fault) override;
 
-    void handleTrap(int trapNum, ThreadContext *tc, Fault *fault);
+    void handleTrap(int trapNum, ThreadContext *tc, Fault *fault) override;
 };
 
 SyscallReturn getresuidFunc(SyscallDesc *desc, int num, ThreadContext *tc);

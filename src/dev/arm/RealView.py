@@ -1084,9 +1084,7 @@ Interrupts:
             self._attach_device(dev, bus, dma_ports)
             self.smmu.connect(dev, bus)
 
-    def setupBootLoader(self, cur_sys, loc, boot_loader=None):
-        if boot_loader is None:
-            boot_loader = [ loc('boot_emm.arm64'), loc('boot_emm.arm') ]
+    def setupBootLoader(self, cur_sys, boot_loader):
         super(VExpress_GEM5_Base, self).setupBootLoader(
                 cur_sys, boot_loader, 0x8000000, 0x80000000)
 
@@ -1117,6 +1115,12 @@ class VExpress_GEM5_V1_Base(VExpress_GEM5_Base):
     gicv2m.frames = [
         Gicv2mFrame(spi_base=256, spi_len=64, addr=0x2c1c0000),
     ]
+
+    def setupBootLoader(self, cur_sys, loc, boot_loader=None):
+        if boot_loader is None:
+            boot_loader = [ loc('boot.arm64'), loc('boot.arm') ]
+        super(VExpress_GEM5_V1_Base, self).setupBootLoader(
+                cur_sys, boot_loader)
 
     def _on_chip_devices(self):
         return super(VExpress_GEM5_V1_Base,self)._on_chip_devices() + [

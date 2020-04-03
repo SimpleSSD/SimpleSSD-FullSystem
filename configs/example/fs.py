@@ -152,9 +152,6 @@ def build_test_system(np, simplessd):
         ObjectList.is_kvm_cpu(FutureClass):
         test_sys.kvm_vm = KvmVM()
 
-        if buildEnv['TARGET_ISA'] in "x86":
-            test_sys.eventq_index = np
-
     if options.ruby:
         bootmem = getattr(test_sys, '_bootmem', None)
         Ruby.create_system(options, True, test_sys, test_sys.iobus,
@@ -254,6 +251,8 @@ def build_test_system(np, simplessd):
 
         MemConfig.config_mem(options, test_sys)
 
+        # Message Signaled Interrupt
+        # Our X86MSIHandler requires local APICs
         if buildEnv['TARGET_ISA'] in "x86":
             lapics = []
 
@@ -261,14 +260,6 @@ def build_test_system(np, simplessd):
                 lapics.append(test_sys.cpu[i].interrupts[0])
 
             test_sys.msi_handler.lapics = lapics
-
-    if buildEnv['TARGET_ISA'] in "x86" and test_sys.eventq_index == np:
-        test_sys.eventq_index = 0
-
-        for idx, cpu in enumerate(test_sys.cpu):
-            for obj in cpu.descendants():
-                obj.eventq_index = test_sys.eventq_index
-            cpu.eventq_index = idx + 1
 
     return test_sys
 
@@ -421,8 +412,6 @@ if buildEnv['TARGET_ISA'] == "arm" and not options.bare_metal \
         if hasattr(root, sysname):
             sys = getattr(root, sysname)
             sys.generateDtb(m5.options.outdir, '%s.dtb' % sysname)
-
-root.sim_quantum = 1000000000
 
 Simulation.setWorkCountOptions(test_sys, options)
 Simulation.run(options, root, test_sys, FutureClass)

@@ -77,7 +77,10 @@ struct Argument<PseudoInstABI, uint64_t>
     static uint64_t
     get(ThreadContext *tc, PseudoInstABI::Position &position)
     {
-        return TheISA::getArgument(tc, position, sizeof(uint64_t), false);
+        uint64_t result = TheISA::getArgument(tc, position, sizeof(uint64_t),
+                                              false);
+        position++;
+        return result;
     }
 };
 
@@ -85,6 +88,12 @@ struct Argument<PseudoInstABI, uint64_t>
 
 namespace PseudoInst
 {
+
+static inline void
+decodeAddrOffset(Addr offset, uint8_t &func)
+{
+    func = bits(offset, 15, 8);
+}
 
 void arm(ThreadContext *tc);
 void quiesce(ThreadContext *tc);

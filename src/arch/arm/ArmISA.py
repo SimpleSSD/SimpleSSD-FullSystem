@@ -38,16 +38,16 @@
 
 from m5.params import *
 from m5.proxy import *
-from m5.SimObject import SimObject
 
 from m5.objects.ArmPMU import ArmPMU
 from m5.objects.ArmSystem import SveVectorLength
+from m5.objects.BaseISA import BaseISA
 from m5.objects.ISACommon import VecRegRenameMode
 
 # Enum for DecoderFlavour
 class DecoderFlavour(Enum): vals = ['Generic']
 
-class ArmISA(SimObject):
+class ArmISA(BaseISA):
     type = 'ArmISA'
     cxx_class = 'ArmISA::ISA'
     cxx_header = "arch/arm/isa.hh"
@@ -102,8 +102,9 @@ class ArmISA(SimObject):
     # !CRC32 | !SHA2 | !SHA1 | !AES
     id_aa64isar0_el1 = Param.UInt64(0x0000000000000000,
         "AArch64 Instruction Set Attribute Register 0")
-    # Reserved for future expansion
-    id_aa64isar1_el1 = Param.UInt64(0x0000000000000000,
+
+    # GPI = 0x0 | GPA = 0x1| API=0x0 | APA=0x1
+    id_aa64isar1_el1 = Param.UInt64(0x0000000001000010,
         "AArch64 Instruction Set Attribute Register 1")
 
     # 4K | 64K | !16K | !BigEndEL0 | !SNSMem | !BigEnd | 8b ASID | 40b PA

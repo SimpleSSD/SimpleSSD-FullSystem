@@ -78,30 +78,34 @@ submit your code to the mainline of gem5, the code is reviewed by others in the
 community. Additionally, the maintainer for that part of the code must sign off
 on it.
 
-Contributing long-lived feature branches
-----------------------------------------
-Oftentimes users or institutions add features that are necessarily complex,
-and require many changes on long-lived feature branches. In this case,
-maintaining a perfect history where all changes work individually is infeasible.
-When contributing long-lived feature branches back to gem5's public repository
-users may merge entire long-lived branches into a single changeset and contribute
-their code back as long as 1) the changes have been reviewed by the maintainer
-2) the maintainer agrees to allow such a change, and 3) the changes are passing
-the public tests. Changes that affect common code (outside of a specific
-maintainer's purview) will still need to follow the standard gem5 protocol.
-
-
 Cloning the gem5 repo to contribute
 ===================================
 
 If you plan on contributing, it is strongly encouraged for you to clone the
-repository directly from our gerrit instance at
-https://gem5.googlesource.com/.
+repository directly, and checkout the `develop` branch from our gerrit instance
+at https://gem5.googlesource.com/.
 
-To clone the master gem5 repository:
+To clone the gem5 repository:
+
 ```
  git clone https://gem5.googlesource.com/public/gem5
 ```
+
+By default, the master branch is checked out. The master branch is stable,
+containing the latest released version of gem5. To obtain code still
+under-development (and which contributions can be made):
+
+```
+cd gem5
+git checkout --track origin/develop
+```
+
+Changes should be made to this develop branch. Changes to the master branch
+will be blocked. Once a change on the develop branch is properly incorporated
+into the gem5 repo it will be merged into the master Branch upon the next
+release of gem5. New releases of gem5 occur three times a year. Ergo, changes
+made to the develop branch should appear on the master branch within three to
+four months as part of a stable release.
 
 Other gem5 repositories
 -----------------------
@@ -111,10 +115,6 @@ There are a few repositories other than the main gem5 development repository.
  * public/m5threads: The code for a pthreads implementation that works with
    gem5's syscall emulation mode.
 
-Other gem5 branches
--------------------
-
-None right now.
 
 Making changes to gem5
 ======================
@@ -236,12 +236,12 @@ Push change to gerrit review
 ----------------------------
 
 ```
- git push origin HEAD:refs/for/master
+ git push origin HEAD:refs/for/develop
 ```
 
 Assuming origin is https://gem5.googlesource.com/public/gem5 and you want to
 push the changeset at HEAD, this will create a new review request on top of the
-master branch. More generally,
+develop branch. More generally,
 
 ```
  git push <gem5 gerrit instance> <changeset>:refs/for/<branch>
@@ -276,20 +276,35 @@ changeset.
  git commit --amend
 ```
 
-Push change to gerrit as a draft/private
-----------------------------------------
+Push change to gerrit as a Work In Progress
+-------------------------------------------
 
-See https://gerrit-review.googlesource.com/Documentation/intro-user.html#private-changes
-for details on private gerrit changes.
+It is acceptable to push commits as "Work In Progress" (WIP) changes within
+gerrit. WIP changes are publicly visible though no one will be able to review
+the changes or be directly notified they have been submitted. WIP changes can
+be useful for backing up code currently under-development or for sharing
+incomplete code with the wider community (i.e., the link to the gerrit change
+may be shared, and others may download the change, comment on it, and track
+alterations over time).
+
+See https://gerrit-review.googlesource.com/Documentation/intro-user.html#wip
+for details on WIP gerrit changes.
+
+To push a change as a WIP:
 
 ```
- git push origin HEAD:refs/for/master%private
+ git push origin HEAD:refs/for/develop%wip
 ```
 
-Once you have pushed your change as "private", you can log onto [gerrit]
-(https://gem5-review.googlesource.com) and once you're happy with the commit
-click the "unmark private" which may be hidden in the "more options" dropdown
-in the upper right corner.
+Once you have pushed your change as a WIP, you can log onto [gerrit](
+https://gem5-review.googlesource.com) and view it. Once you're happy with the
+change you can add reviewers which shall move your change from WIP status
+to be considered for submission by the wider gem5 community. Switching from a
+WIP to a regular change does not notify the gem5 community, via the gem5-dev
+mailing-list, that a change has been submitted (as would occur if a change were
+submitted directly for review). It is therefore important to include reviewers
+and CC those who you wish to view the change (they will be notified
+automatically via email).
 
 Push change bypassing gerrit
 -----------------------------
@@ -297,7 +312,7 @@ Push change bypassing gerrit
 Only maintainers can bypass gerrit review. This should very rarely be used.
 
 ```
- git push origin HEAD:refs/heads/master
+ git push origin HEAD:refs/heads/develop
 ```
 
 Other gerrit push options
@@ -311,18 +326,21 @@ https://gerrit-review.googlesource.com/Documentation/user-upload.html
 Branches
 ========
 
-By default, contributions to gem5 should be made on the master branch. Branches
-are generally discouraged due to their tendency to bloat git repositories with
-abandoned code. However, the creation of branches is permitted for development
-of a specific feature or improvement if one or more of the following criteria
-are met:
+By default, contributions to gem5 should be made on the develop branch. The
+master branch is maintained as a stable release branch (i.e., it can be pulled
+to obtain the latest official release of gem5). Creation of additional branches
+is generally discouraged due to their tendency to bloat git repositories with
+abandoned code. However, the creation of new branches is permitted for
+development of a specific feature or improvement if one or more of the
+following criteria are met:
 
 1. The feature/improvement is likely to be of a large size, consisting of many
 commits, with little logic in these commits being contributed separately.
 2. The feature/improvement will be developed over a long period of time.
-3. There is sufficient reason that a feature/improvement should not be merged
-into the master branch yet (e.g., the feature/improvement is not intended for
-the next release but a future release).
+3. There is sufficient reason that a feature/improvement should not be part
+of the next gem5 release (e.g., the change should be held within a feature
+branch until ready for the next release, at which point it will be merged
+into the develop branch).
 
 If a branch is required it can only be created by a project maintainer.
 Therefore, if a gem5 contributor desires a separate branch for their work, they
@@ -333,9 +351,10 @@ whether the creation of a branch is necessary**. If approved, the maintainer
 shall create the branch which the contributor may then use.
 
 Development on a branch within Gerrit functions in exactly the same way as
-contributing to the master branch. When contributors to a branch are satisfied,
-they should create a merge commit into the master branch. The maintainer should
-then be notified that the branch they created can now be deleted.
+contributing to the develop branch. When contributors to a branch are
+satisfied, they should create a merge commit into the develop branch. The
+maintainer should then be notified that the branch they created can now be
+deleted.
 
 **Abandonment of changes within branches may result in these branches being
 removed from the repository. All branches within a repo should be under active
@@ -383,7 +402,7 @@ can simply push the changeset again to the same Gerrit branch to update the
 review request.
 
 ```
- git push origin HEAD:refs/for/master
+ git push origin HEAD:refs/for/develop
 ```
 
 Committing changes
@@ -462,3 +481,67 @@ contributors and reviewers to follow.
    intervention by the PMC are undesirable. Attempts should be made to resolve
    disagreements via respectful and polite discourse before being escalated to
    this level.
+
+Releases
+========
+
+gem5 releases occur 3 times per year. The procedure for releasing gem5 is as
+follows:
+
+1. Developers will be notified, via the gem5-dev mailing list, that a new
+release of gem5 will occur. This should be no sooner than 2 weeks prior to the
+creation of the staging branch (the first step in releasing a new version of
+gem5). This gives time for developers to ensure their changes for the next
+release are submitted to the develop branch.
+2. When a release is ready, a new staging branch shall be created by a project
+maintainer, from develop, with the name "release-staging-{VERSION}". The
+gem5-dev mailing list will be notified that the staging branch will be merged
+into the master branch after two weeks, thus marking the new release.
+3. The staging branch will have the full suite of gem5 tests run on it to
+ensure all tests pass and the to-be-released code is in a decent state.
+4. If a user submits a changeset to the staging branch, it will be considered
+and undergo the standard Gerrit review process. However, only alterations that
+cannot wait until the following release will be accepted for submission into
+the branch (i.e., submissions to the staging branch for "last minute"
+inclusions to the release should be of a high priority, such as a critical bug
+fix). The project maintainers will use their discretion in deciding whether a
+change may be submitted directly to the staging branch. All other submissions
+to gem5 will continue to be made to the develop branch. Patches submitted
+into the staging branch do not need to be re-added to the develop branch.
+5. Once signed off by members of the PMC the staging branch shall be merged
+into the master and develop branch. The staging branch will then be deleted.
+6. The master branch shall be tagged with the correct version number for that
+release. gem5 conforms to a "v{YY}.{MAJOR}.{MINOR}.{HOTFIX}" versioning system.
+E.g., the first major release of 2022 will be "v22.0.0.0", followed by
+"v22.1.0.0". All the releases (with the exception of hotfixes) are considered
+major releases. For the meantime, there are no minor releases though we keep
+the minor release numbers in case this policy changes in the future.
+7. The gem5-dev and gem5-user mailing lists shall be notified of the new gem5
+release.
+
+Hotfixes
+--------
+
+There may be circumstances in which a change to gem5 is deemed critical and
+cannot wait for an official release (e.g., a high-priority bug fix). In these
+circumstances a hotfix shall be made.
+
+First, if a developer suspects a hotfix may be necessary then the issue
+should be discussed on the gem5-dev mailing list. The community will decide
+whether the issue is worthy of a hotfix, and the final decision should be
+made by members of the PMC if there is no consensus. Assuming the hotfix is
+permitted, the following steps will be taken:
+
+1. A new branch with the prefix "hotfix-" will be created from the master
+branch. Only gem5 maintainers can create branches. If a non-maintainer requires
+the creation of a hotfix branch then they should contact a gem5 maintainer.
+2. The change shall be submitted to the hotfix branch via gerrit. Full review,
+as with any other change, will be required.
+3. Once fully submitted, the hotfix branch shall be merged into both the
+develop and the master branch by a gem5 maintainer.
+4. The master branch will be tagged with the new version number; the same as
+the last but with an incremented hotfix number (e.g., "v20.2.0.0" would
+transition to "v20.2.0.1").
+4. The hotfix branch will then be deleted.
+5. The gem5-dev and the gem5-user mailing lists shall be notified of this
+hotfix.

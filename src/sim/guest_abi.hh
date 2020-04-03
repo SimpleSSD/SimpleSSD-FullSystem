@@ -61,6 +61,32 @@ namespace GuestABI
  * std::enable_if style conditional specializations.
  */
 
+/*
+ * Position may need to be initialized based on the ThreadContext, for instance
+ * to find out where the stack pointer is initially.
+ */
+template <typename ABI, typename Enabled=void>
+struct PositionInitializer
+{
+    static typename ABI::Position
+    init(const ThreadContext *tc)
+    {
+        return typename ABI::Position();
+    }
+};
+
+template <typename ABI>
+struct PositionInitializer<ABI, typename std::enable_if<
+    std::is_constructible<typename ABI::Position, const ThreadContext *>::value
+    >::type>
+{
+    static typename ABI::Position
+    init(const ThreadContext *tc)
+    {
+        return typename ABI::Position(tc);
+    }
+};
+
 template <typename ABI, typename Ret, typename Enabled=void>
 struct Result
 {
@@ -258,6 +284,12 @@ class VarArgs
     }
 };
 
+template <typename T>
+struct IsVarArgs : public std::false_type {};
+
+template <typename ...Types>
+struct IsVarArgs<VarArgs<Types...>> : public std::true_type {};
+
 template <typename ...Types>
 std::ostream &
 operator << (std::ostream &os, const VarArgs<Types...> &va)
@@ -407,7 +439,7 @@ invokeSimcall(ThreadContext *tc,
 {
     // Default construct a Position to track consumed resources. Built in
     // types will be zero initialized.
-    auto position = typename ABI::Position();
+    auto position = GuestABI::PositionInitializer<ABI>::init(tc);
     GuestABI::ResultAllocator<ABI, Ret>::allocate(tc, position);
     return GuestABI::callFrom<ABI, Ret, Args...>(tc, position, target);
 }
@@ -427,7 +459,7 @@ invokeSimcall(ThreadContext *tc,
 {
     // Default construct a Position to track consumed resources. Built in
     // types will be zero initialized.
-    auto position = typename ABI::Position();
+    auto position = GuestABI::PositionInitializer<ABI>::init(tc);
     GuestABI::callFrom<ABI, Args...>(tc, position, target);
 }
 
@@ -450,7 +482,7 @@ dumpSimcall(std::string name, ThreadContext *tc,
             std::function<Ret(ThreadContext *, Args...)> target=
             std::function<Ret(ThreadContext *, Args...)>())
 {
-    auto position = typename ABI::Position();
+    auto position = GuestABI::PositionInitializer<ABI>::init(tc);
     std::ostringstream ss;
 
     GuestABI::ResultAllocator<ABI, Ret>::allocate(tc, position);

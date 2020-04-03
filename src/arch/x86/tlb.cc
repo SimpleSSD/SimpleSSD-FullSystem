@@ -42,7 +42,6 @@
 #include <cstring>
 #include <memory>
 
-#include "arch/generic/mmapped_ipr.hh"
 #include "arch/x86/faults.hh"
 #include "arch/x86/insts/microldstop.hh"
 #include "arch/x86/pagetable_walker.hh"
@@ -61,7 +60,7 @@ namespace X86ISA {
 
 TLB::TLB(const Params *p)
     : BaseTLB(p), configAddress(0), size(p->size),
-      tlb(size), lruSeq(0)
+      tlb(size), lruSeq(0), m5opRange(p->system->m5opRange())
 {
     if (!size)
         fatal("TLBs must have a non-zero size.\n");
@@ -229,13 +228,8 @@ TLB::finalizePhysical(const RequestPtr &req,
 {
     Addr paddr = req->getPaddr();
 
-    AddrRange m5opRange(0xFFFF0000, 0x100000000);
-
     if (m5opRange.contains(paddr)) {
-        req->setFlags(Request::MMAPPED_IPR | Request::GENERIC_IPR |
-                      Request::STRICT_ORDER);
-        req->setPaddr(GenericISA::iprAddressPseudoInst((paddr >> 8) & 0xFF,
-                                                       paddr & 0xFF));
+        req->setFlags(Request::MMAPPED_IPR | Request::STRICT_ORDER);
     } else if (FullSystem) {
         // Check for an access to the local APIC
         LocalApicBase localApicBase =

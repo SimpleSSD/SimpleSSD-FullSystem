@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, 2015-2019 ARM Limited
+ * Copyright (c) 2010-2013, 2015-2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -1080,8 +1080,9 @@ snsBankedIndex(MiscRegIndex reg, ThreadContext *tc, bool ns)
 int
 snsBankedIndex64(MiscRegIndex reg, ThreadContext *tc)
 {
+    auto *isa = static_cast<ArmISA::ISA *>(tc->getIsaPtr());
     SCR scr = tc->readMiscReg(MISCREG_SCR);
-    return tc->getIsaPtr()->snsBankedIndex64(reg, scr.ns);
+    return isa->snsBankedIndex64(reg, scr.ns);
 }
 
 /**
@@ -1117,7 +1118,8 @@ unflattenMiscReg(int reg)
 }
 
 bool
-canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
+canReadAArch64SysReg(MiscRegIndex reg, HCR hcr, SCR scr, CPSR cpsr,
+                     ThreadContext *tc)
 {
     // Check for SP_EL0 access while SPSEL == 0
     if ((reg == MISCREG_SP_EL0) && (tc->readMiscReg(MISCREG_SPSEL) == 0))
@@ -1136,6 +1138,7 @@ canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
     }
 
     bool secure = ArmSystem::haveSecurity(tc) && !scr.ns;
+    bool el2_host = EL2Enabled(tc) && hcr.e2h;
 
     switch (currEL(cpsr)) {
       case EL0:
@@ -1145,9 +1148,11 @@ canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
         return secure ? miscRegInfo[reg][MISCREG_PRI_S_RD] :
             miscRegInfo[reg][MISCREG_PRI_NS_RD];
       case EL2:
-        return miscRegInfo[reg][MISCREG_HYP_RD];
+        return el2_host ? miscRegInfo[reg][MISCREG_HYP_E2H_RD] :
+            miscRegInfo[reg][MISCREG_HYP_RD];
       case EL3:
-        return secure ? miscRegInfo[reg][MISCREG_MON_NS0_RD] :
+        return el2_host ? miscRegInfo[reg][MISCREG_MON_E2H_RD] :
+            secure ? miscRegInfo[reg][MISCREG_MON_NS0_RD] :
             miscRegInfo[reg][MISCREG_MON_NS1_RD];
       default:
         panic("Invalid exception level");
@@ -1155,7 +1160,8 @@ canReadAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
 }
 
 bool
-canWriteAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
+canWriteAArch64SysReg(MiscRegIndex reg, HCR hcr, SCR scr, CPSR cpsr,
+                      ThreadContext *tc)
 {
     // Check for SP_EL0 access while SPSEL == 0
     if ((reg == MISCREG_SP_EL0) && (tc->readMiscReg(MISCREG_SPSEL) == 0))
@@ -1180,6 +1186,7 @@ canWriteAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
     }
 
     bool secure = ArmSystem::haveSecurity(tc) && !scr.ns;
+    bool el2_host = EL2Enabled(tc) && hcr.e2h;
 
     switch (el) {
       case EL0:
@@ -1189,9 +1196,11 @@ canWriteAArch64SysReg(MiscRegIndex reg, SCR scr, CPSR cpsr, ThreadContext *tc)
         return secure ? miscRegInfo[reg][MISCREG_PRI_S_WR] :
             miscRegInfo[reg][MISCREG_PRI_NS_WR];
       case EL2:
-        return miscRegInfo[reg][MISCREG_HYP_WR];
+        return el2_host ? miscRegInfo[reg][MISCREG_HYP_E2H_WR] :
+            miscRegInfo[reg][MISCREG_HYP_WR];
       case EL3:
-        return secure ? miscRegInfo[reg][MISCREG_MON_NS0_WR] :
+        return el2_host ? miscRegInfo[reg][MISCREG_MON_E2H_WR] :
+            secure ? miscRegInfo[reg][MISCREG_MON_NS0_WR] :
             miscRegInfo[reg][MISCREG_MON_NS1_WR];
       default:
         panic("Invalid exception level");
@@ -1926,6 +1935,39 @@ decodeAArch64SysReg(unsigned op0, unsigned op1,
                         return MISCREG_TTBR1_EL1;
                       case 2:
                         return MISCREG_TCR_EL1;
+                    }
+                    break;
+                  case 0x1:
+                    switch (op2) {
+                      case 0x0:
+                        return MISCREG_APIAKeyLo_EL1;
+                      case 0x1:
+                        return MISCREG_APIAKeyHi_EL1;
+                      case 0x2:
+                        return MISCREG_APIBKeyLo_EL1;
+                      case 0x3:
+                        return MISCREG_APIBKeyHi_EL1;
+                    }
+                    break;
+                  case 0x2:
+                    switch (op2) {
+                      case 0x0:
+                        return MISCREG_APDAKeyLo_EL1;
+                      case 0x1:
+                        return MISCREG_APDAKeyHi_EL1;
+                      case 0x2:
+                        return MISCREG_APDBKeyLo_EL1;
+                      case 0x3:
+                        return MISCREG_APDBKeyHi_EL1;
+                    }
+                    break;
+
+                  case 0x3:
+                    switch (op2) {
+                      case 0x0:
+                        return MISCREG_APGAKeyLo_EL1;
+                      case 0x1:
+                        return MISCREG_APGAKeyHi_EL1;
                     }
                     break;
                 }
@@ -2874,10 +2916,10 @@ ISA::initializeMiscRegMetadata()
     bool nTLSMD = false;
 
     // Pointer authentication (Arm 8.3+), unsupported
-    bool EnDA = false; // using APDAKey_EL1 key of instr addrs in ELs 0,1
-    bool EnDB = false; // using APDBKey_EL1 key of instr addrs in ELs 0,1
-    bool EnIA = false; // using APIAKey_EL1 key of instr addrs in ELs 0,1
-    bool EnIB = false; // using APIBKey_EL1 key of instr addrs in ELs 0,1
+    bool EnDA = true; // using APDAKey_EL1 key of instr addrs in ELs 0,1
+    bool EnDB = true; // using APDBKey_EL1 key of instr addrs in ELs 0,1
+    bool EnIA = true; // using APIAKey_EL1 key of instr addrs in ELs 0,1
+    bool EnIB = true; // using APIBKey_EL1 key of instr addrs in ELs 0,1
 
     /**
      * Some registers alias with others, and therefore need to be translated.
@@ -3665,8 +3707,9 @@ ISA::initializeMiscRegMetadata()
     InitReg(MISCREG_HTPIDR)
       .hyp().monNonSecure();
     InitReg(MISCREG_CNTFRQ)
-      .unverifiable()
-      .reads(1).mon();
+      .reads(1)
+      .highest(system)
+      .privSecureWrite(aarch32EL3);
     InitReg(MISCREG_CNTKCTL)
       .allPrivileges().exceptUserMode();
     InitReg(MISCREG_CNTP_TVAL)
@@ -3959,6 +4002,28 @@ ISA::initializeMiscRegMetadata()
       .allPrivileges().exceptUserMode().writes(0);
     InitReg(MISCREG_ID_AA64MMFR2_EL1)
       .allPrivileges().exceptUserMode().writes(0);
+
+    InitReg(MISCREG_APDAKeyHi_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APDAKeyLo_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APDBKeyHi_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APDBKeyLo_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APGAKeyHi_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APGAKeyLo_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APIAKeyHi_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APIAKeyLo_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APIBKeyHi_EL1)
+      .allPrivileges().exceptUserMode();
+    InitReg(MISCREG_APIBKeyLo_EL1)
+      .allPrivileges().exceptUserMode();
+
     InitReg(MISCREG_CCSIDR_EL1)
       .allPrivileges().exceptUserMode().writes(0);
     InitReg(MISCREG_CLIDR_EL1)
@@ -4389,7 +4454,9 @@ ISA::initializeMiscRegMetadata()
       .allPrivileges().exceptUserMode()
       .mapsTo(MISCREG_CNTKCTL);
     InitReg(MISCREG_CNTFRQ_EL0)
-      .reads(1).mon()
+      .reads(1)
+      .highest(system)
+      .privSecureWrite(aarch32EL3)
       .mapsTo(MISCREG_CNTFRQ);
     InitReg(MISCREG_CNTPCT_EL0)
       .reads(1)

@@ -44,8 +44,7 @@
 namespace PowerISA
 {
 
-ISA::ISA(Params *p)
-    : SimObject(p)
+ISA::ISA(Params *p) : BaseISA(p)
 {
     clear();
 }

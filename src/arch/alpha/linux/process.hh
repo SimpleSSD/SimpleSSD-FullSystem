@@ -33,6 +33,8 @@
 
 #include "arch/alpha/process.hh"
 
+#include "sim/syscall_desc.hh"
+
 namespace AlphaISA  {
 
 /// A process with emulated Alpha/Linux syscalls.
@@ -44,10 +46,10 @@ class AlphaLinuxProcess : public AlphaProcess
 
     void syscall(ThreadContext *tc, Fault *fault) override;
 
-    virtual SyscallDesc* getDesc(int callnum);
+    SyscallDesc *getDesc(int callnum) override;
 
      /// Array of syscall descriptors, indexed by call number.
-    static SyscallDesc syscallDescs[];
+    static SyscallDescABI<DefaultSyscallABI> syscallDescs[];
 
     const int Num_Syscall_Descs;
 };
